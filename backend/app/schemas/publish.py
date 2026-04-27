@@ -1,7 +1,7 @@
 from __future__ import annotations
 from uuid import UUID
 
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel
 
@@ -28,12 +28,30 @@ class XHSCredentialsSave(BaseModel):
 
 from datetime import datetime
 from urllib.parse import urlsplit
-from pydantic import field_validator
+from pydantic import Field, field_validator, model_validator
+from .creator import EncryptedEnvelope
 
 
 class PublicationRecordCreate(BaseModel):
     draft_id: UUID
     xhs_post_url: str
+    expected_version: Optional[int] = Field(None, ge=1)
+    snapshot: Optional[EncryptedEnvelope] = None
+    template_id: Optional[Literal['checklist', 'steps']] = None
+    published_at: Optional[datetime] = None
+
+    @field_validator('published_at')
+    @classmethod
+    def aware_time(cls, value):
+        if value is not None and value.tzinfo is None:
+            raise ValueError('Publication time must include a timezone')
+        return value
+
+    @model_validator(mode='after')
+    def snapshot_version(self):
+        if self.snapshot is not None and self.expected_version is None:
+            raise ValueError('Snapshot requires the saved draft version')
+        return self
 
     @field_validator('xhs_post_url')
     @classmethod
@@ -54,6 +72,11 @@ class PublishedPostResponse(BaseModel):
     xhs_post_url: Optional[str]
     publish_status: str
     published_at: datetime
+    snapshot: Optional[EncryptedEnvelope] = None
+    draft_version: Optional[int] = None
+    topic_tags: list[str] = Field(default_factory=list)
+    template_id: Optional[str] = None
+    image_ids: list[str] = Field(default_factory=list)
     model_config = {'from_attributes': True}
 
 

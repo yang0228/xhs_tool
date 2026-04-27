@@ -1,9 +1,11 @@
 from __future__ import annotations
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+from .creator import EncryptedEnvelope
+from .material import MaterialCreate
 
 
 class DraftEnvelope(BaseModel):
@@ -16,7 +18,15 @@ class DraftEnvelope(BaseModel):
     title_hash: Optional[str] = Field(None, max_length=64)
     material_id: Optional[UUID] = None
     image_ids: list[str] = Field(default_factory=list, max_length=100)
-    status: Literal['draft', 'ready', 'published'] = 'draft'
+    status: Literal['idea', 'draft', 'ready', 'published'] = 'draft'
+    planned_date: Optional[date] = None
+    topic_tags: list[str] = Field(default_factory=list, max_length=50)
+    encrypted_context: Optional[EncryptedEnvelope] = None
+
+    @field_validator('topic_tags')
+    @classmethod
+    def valid_tags(cls, values):
+        return MaterialCreate.validate_tags(values)
 
     @field_validator('image_ids')
     @classmethod
@@ -54,6 +64,9 @@ class DraftResponse(BaseModel):
     encryption_salt: str
     title_hash: Optional[str]
     status: str
+    planned_date: Optional[date] = None
+    topic_tags: list[str] = Field(default_factory=list)
+    encrypted_context: Optional[EncryptedEnvelope] = None
     version: int
     created_at: datetime
     updated_at: datetime

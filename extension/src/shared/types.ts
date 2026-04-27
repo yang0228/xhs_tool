@@ -41,7 +41,10 @@ export interface Draft {
   encryption_iv: string;
   encryption_salt: string;
   title_hash: string | null;
-  status: "draft" | "ready" | "published";
+  status: "idea" | "draft" | "ready" | "published";
+  planned_date?: string | null;
+  topic_tags?: string[];
+  encrypted_context?: EncryptedPayload | null;
   version: number;
   created_at: string;
   updated_at: string;
@@ -68,6 +71,11 @@ export interface PublishedPost {
   xhs_post_url: string | null;
   publish_status: "published" | "failed" | "deleted";
   published_at: string;
+  snapshot?: EncryptedPayload | null;
+  draft_version?: number | null;
+  topic_tags?: string[];
+  template_id?: string | null;
+  image_ids?: string[];
 }
 
 export interface PostAnalytics {

@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
-from .routers import ai, analytics, auth, backup, drafts, images, materials, publish
+from .routers import ai, analytics, auth, backup, drafts, images, materials, profile, publish
 
 logging.basicConfig(level=logging.DEBUG if settings.debug else logging.INFO)
 logger = logging.getLogger(__name__)
@@ -29,6 +29,7 @@ app.include_router(images.router, prefix="/api")
 app.include_router(publish.router, prefix="/api")
 app.include_router(analytics.router, prefix="/api")
 app.include_router(backup.router, prefix="/api")
+app.include_router(profile.router, prefix="/api")
 
 
 @app.on_event("startup")

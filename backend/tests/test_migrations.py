@@ -25,6 +25,8 @@ class MigrationTests(unittest.IsolatedAsyncioTestCase):
             return module
         initial=revision('9b4d6380411e_initial.py')
         feature=revision('c42a7d109e81_creator_workflow.py')
+        workbench=revision('d18e97ac2140_creator_workbench.py')
+        rag=revision('e32b476190a8_material_rag_indexes.py')
         def run(conn,fn):
             with Operations.context(MigrationContext.configure(conn)):
                 fn()
@@ -44,6 +46,16 @@ class MigrationTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(row['encryption_version'],1)
                 self.assertEqual(row['image_ids'],[])
                 self.assertEqual(row['version'],7)
+                await conn.run_sync(run,workbench.upgrade)
+                row=(await conn.execute(text('SELECT * FROM drafts'))).mappings().one()
+                self.assertEqual(row['encrypted_content'],'body')
+                self.assertEqual(row['topic_tags'],[])
+                self.assertIsNone(row['planned_date'])
+                self.assertIsNone(row['encrypted_context'])
+                await conn.run_sync(run,rag.upgrade)
+                self.assertEqual((await conn.execute(text('SELECT count(*) FROM material_rag_indexes'))).scalar_one(),0)
+                await conn.run_sync(run,rag.downgrade)
+                await conn.run_sync(run,workbench.downgrade)
                 await conn.execute(text("UPDATE users SET api_key_prefix='longerprefix'"))
                 await conn.run_sync(run,feature.downgrade)
                 self.assertEqual((await conn.execute(text('SELECT encrypted_content FROM drafts'))).scalar_one(),'body')

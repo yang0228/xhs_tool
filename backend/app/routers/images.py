@@ -11,6 +11,7 @@ from ..database import get_db
 from ..dependencies import get_current_user
 from ..models.image import Image
 from ..models.draft import Draft
+from ..models.published_post import PublishedPost
 from ..models.user import User
 from ..schemas.image import (
     ImageConfirmRequest, MAX_IMAGE_BYTES,
@@ -86,6 +87,10 @@ async def delete_image(image_id: UUID, user: User = Depends(get_current_user), d
     image = result.scalar_one_or_none()
     if not image:
         raise HTTPException(status_code=404, detail="Image not found")
+
+    published = await db.scalar(select(PublishedPost.id).where(PublishedPost.user_id == user.id, PublishedPost.image_ids.any(str(image_id))).limit(1))
+    if published is not None:
+        raise HTTPException(409, 'Image is retained by a publication snapshot')
 
     try:
         await R2Service().delete_object(image.r2_key)

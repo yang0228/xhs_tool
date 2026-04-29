@@ -84,7 +84,8 @@ async def update_draft(draft_id: UUID, body: DraftUpdate, user: User = Depends(g
         if current_version is not None and current_version != body.expected_version:
             raise HTTPException(409, 'Draft changed; reload before saving')
         raise
-    values = body.model_dump(exclude={'expected_version'})
+    # Old clients only send title/body. Missing optional metadata must survive.
+    values = body.model_dump(exclude={'expected_version'}, exclude_unset=True)
     values.update(version=Draft.version + 1, updated_at=func.now())
     result = await db.execute(update(Draft).where(
         Draft.id == draft_id, Draft.user_id == user.id,

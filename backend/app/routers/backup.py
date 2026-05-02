@@ -5,15 +5,15 @@ master keys are deliberately absent from this API's accepted schema.
 """
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any, Literal
+from datetime import date, datetime
+from typing import Any, Literal, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import DateTime, Integer, String, select, text
-from sqlalchemy.dialects.postgresql import ARRAY, UUID as UUIDColumn
+from sqlalchemy import Date, DateTime, Integer, String, select, text, update
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID as UUIDColumn
 from sqlalchemy.exc import IntegrityError, DataError
 
 from ..database import get_db
@@ -24,6 +24,7 @@ from ..models.image import Image
 from ..models.draft import Draft
 from ..models.published_post import PublishedPost
 from ..models.post_analytics import PostAnalytics
+from ..schemas.creator import EncryptedEnvelope, ProfileResponse
 
 router = APIRouter(prefix="/backup", tags=["backup"])
 MODELS = {"materials": Material, "images": Image, "drafts": Draft,
@@ -32,7 +33,8 @@ MODELS = {"materials": Material, "images": Image, "drafts": Draft,
 
 class Snapshot(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    version: Literal[1]
+    version: Literal[1, 2]
+    profile: Optional[ProfileResponse] = None
     user_id: UUID
     materials: list[dict[str, Any]] = Field(max_length=100000)
     images: list[dict[str, Any]] = Field(max_length=100000)
@@ -59,6 +61,10 @@ def parse_value(value, column):
             if parsed.tzinfo is None:
                 invalid(f"{column.name} must include a timezone")
             return parsed
+        if isinstance(kind, Date):
+            return date.fromisoformat(value)
+        if isinstance(kind, JSONB):
+            return EncryptedEnvelope.model_validate(value).model_dump()
         if isinstance(kind, ARRAY):
             if not isinstance(value, list) or any(not isinstance(v, str) or (kind.item_type.length and len(v) > kind.item_type.length) for v in value):
                 invalid(f"Invalid {column.name} array")
@@ -114,13 +120,28 @@ def validate_records(snapshot: Snapshot, user_id: UUID):
                     values["image_ids"] = [str(UUID(value)) for value in values.get("image_ids", [])]
                 except (ValueError, TypeError):
                     invalid("Invalid draft image id")
+                if values.get('status', 'draft') not in ('idea', 'draft', 'ready', 'published'):
+                    invalid('Invalid draft status')
+            if table in ('drafts', 'published_posts'):
+                try:
+                    ids = [str(UUID(value)) for value in values.get('image_ids', [])]
+                except (ValueError, TypeError):
+                    invalid('Invalid image reference')
+                if len(ids) > 100 or len(ids) != len(set(ids)):
+                    invalid('Invalid image references')
+                values['image_ids'] = ids
+                tags = values.get('topic_tags', [])
+                if len(tags) > 50 or any(not tag.strip() for tag in tags):
+                    invalid('Invalid topic tags')
+            if table == 'published_posts' and values.get('template_id') not in (None, 'checklist', 'steps'):
+                invalid('Invalid card template')
             parsed[table].append(values)
     return parsed
 
 
 @router.get("")
 async def export_backup(db=Depends(get_db), user: User = Depends(get_current_user)):
-    output = {"version": 1, "user_id": str(user.id)}
+    output = {"version": 2, "user_id": str(user.id), 'profile': {'encrypted_profile': user.encrypted_profile, 'version': user.profile_version}}
     # A single statement per table in the current request; every row is scoped.
     for table, model in MODELS.items():
         statement = select(model)
@@ -181,7 +202,7 @@ async def restore_backup(snapshot: Snapshot, db=Depends(get_db), user: User = De
         # locks images before drafts; using the same order avoids dangling ARRAY
         # references, which do not have a database foreign-key constraint.
         image_ids = {item["id"] for item in records["images"]}
-        image_ids.update(UUID(image_id) for item in records["drafts"] for image_id in item.get("image_ids", []))
+        image_ids.update(UUID(image_id) for table in ('drafts', 'published_posts') for item in records[table] for image_id in item.get('image_ids', []))
         if image_ids:
             await db.execute(select(Image.id).where(Image.id.in_(image_ids), Image.user_id == user.id).order_by(Image.id).with_for_update(read=True))
         # Preflight every owner/collision/reference before creating any rows.
@@ -205,6 +226,7 @@ async def restore_backup(snapshot: Snapshot, db=Depends(get_db), user: User = De
                         values["image_ids"] = [str(await link("images", value)) for value in values.get("image_ids", [])]
                     elif model is PublishedPost:
                         values["draft_id"] = await link("drafts", values.get("draft_id"))
+                        values['image_ids'] = [str(await link('images', value)) for value in values.get('image_ids', [])]
                     elif model is PostAnalytics:
                         values["published_post_id"] = await link("published_posts", values["published_post_id"])
                     target = existing if existing is not None else model(**values)
@@ -216,6 +238,10 @@ async def restore_backup(snapshot: Snapshot, db=Depends(get_db), user: User = De
             for table in MODELS:
                 db.add_all(pending[table])
                 await db.flush()
+        if snapshot.version == 2 and snapshot.profile and snapshot.profile.encrypted_profile:
+            # An explicit cleared profile has a nonzero version and is not empty.
+            await db.execute(update(User).where(User.id == user.id, User.profile_version == 0).values(
+                encrypted_profile=snapshot.profile.encrypted_profile.model_dump(), profile_version=1))
         await db.commit()
     except (IntegrityError, DataError):
         await db.rollback()
@@ -223,4 +249,4 @@ async def restore_backup(snapshot: Snapshot, db=Depends(get_db), user: User = De
     except Exception:
         await db.rollback()
         raise
-    return {"version": 1, "imported": {table: len(rows) for table, rows in pending.items()}, "id_map": id_map}
+    return {"version": snapshot.version, "imported": {table: len(rows) for table, rows in pending.items()}, "id_map": id_map}

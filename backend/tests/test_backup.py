@@ -23,7 +23,7 @@ class BackupTests(DatabaseTestCase):
     async def test_export_scopes_records_and_keeps_ciphertext(self):
         own = await self.material(); await self.material(self.other_id)
         data = await self.snapshot()
-        self.assertEqual(data['version'], 1)
+        self.assertEqual(data['version'], 2)
         self.assertEqual(data['user_id'], str(self.user_id))
         self.assertEqual([i['id'] for i in data['materials']], [str(own.id)])
         self.assertEqual(data['materials'][0]['encrypted_content'], 'cipher')

@@ -19,7 +19,15 @@ import {
 import { readSettings } from "../lib/settings";
 const empty = (): DraftDocument => ({ title: "", content: "", image_ids: [] });
 const signature = (doc: DraftDocument) =>
-  JSON.stringify([doc.title, doc.content, doc.image_ids]);
+  JSON.stringify([
+    doc.title,
+    doc.content,
+    doc.image_ids,
+    doc.status ?? "draft",
+    doc.planned_date ?? null,
+    doc.topic_tags ?? [],
+    doc.context ?? null,
+  ]);
 interface Session {
   key: string;
   identity: ApiIdentity;
@@ -35,7 +43,11 @@ interface Session {
   conflict: DraftDocument | null;
   copyId: string;
 }
-export function useDraftEditor(routeId: string, seed?: DraftDocument) {
+export function useDraftEditor(
+  routeId: string,
+  seed?: DraftDocument,
+  seedScope?: string,
+) {
   const [doc, setDocument] = useState<DraftDocument>(empty);
   const [ready, setReady] = useState(false);
   const [status, setStatus] = useState("正在读取草稿…");
@@ -45,11 +57,16 @@ export function useDraftEditor(routeId: string, seed?: DraftDocument) {
     useState<DraftDocument | null>(null);
   const session = useRef<Session | null>(null);
   const seedKey = seed ? signature(seed) : "";
-  const setDoc = useCallback((next: DraftDocument) => {
-    if (!session.current?.ready || session.current.conflict) return;
-    session.current.doc = next;
-    setDocument(next);
-  }, []);
+  const setDoc = useCallback(
+    (next: DraftDocument | ((current: DraftDocument) => DraftDocument)) => {
+      if (!session.current?.ready || session.current.conflict) return;
+      const document =
+        typeof next === "function" ? next(session.current.doc) : next;
+      session.current.doc = document;
+      setDocument(document);
+    },
+    [],
+  );
   const isCurrent = async (s: Session) =>
     s.live && session.current === s && (await recoveryScope()) === s.scope;
   const cache = async (s: Session) => {
@@ -84,6 +101,8 @@ export function useDraftEditor(routeId: string, seed?: DraftDocument) {
     void (async () => {
       s.identity = await readSettings();
       s.scope = await recoveryScope(s.identity);
+      if (seed && seedScope && seedScope !== s.scope)
+        throw new Error("账户或后端已切换，请回到原账号重新带入内容。");
       const cached = await loadRecovery(s.key, s.scope);
       let server: Draft | null = null;
       if (routeId !== "new") {
@@ -113,11 +132,8 @@ export function useDraftEditor(routeId: string, seed?: DraftDocument) {
         )
           s.conflict = cached;
         else {
-          s.doc = {
-            title: cached.title,
-            content: cached.content,
-            image_ids: cached.image_ids,
-          };
+          const { id: _id, version: _version, ...document } = cached;
+          s.doc = document;
           s.record = {
             id: cached.id || s.record.id,
             version: server?.version ?? cached.version ?? 0,
@@ -149,7 +165,7 @@ export function useDraftEditor(routeId: string, seed?: DraftDocument) {
       s.live = false;
       void cache(s).catch(() => {});
     };
-  }, [routeId, seedKey]);
+  }, [routeId, seedKey, seedScope]);
 
   const saveSession = async (s: Session): Promise<string | null> => {
     if (!s.ready || s.blocked || s.conflict || !s.live) return null;
@@ -157,10 +173,13 @@ export function useDraftEditor(routeId: string, seed?: DraftDocument) {
       s.repeat = true;
       return null;
     }
-    const snapshot = { ...s.doc, image_ids: [...s.doc.image_ids] };
+    const snapshot = structuredClone(s.doc);
     const identity = { ...s.record };
-    if (!snapshot.title.trim() || !snapshot.content.trim()) {
-      setStatus("已暂存本机 · 填写标题和正文后同步");
+    if (
+      !snapshot.title.trim() ||
+      (!snapshot.content.trim() && snapshot.status !== "idea")
+    ) {
+      setStatus("已暂存本机 · 填写标题，或选择选题状态后同步");
       return null;
     }
     if (signature(snapshot) === s.saved) return s.record.id;
@@ -184,7 +203,7 @@ export function useDraftEditor(routeId: string, seed?: DraftDocument) {
           )
         : await apiPost<Draft>(
             "/drafts",
-            { ...payload, client_id: identity.id, status: "draft" },
+            { ...payload, client_id: identity.id },
             undefined,
             s.identity,
           );
@@ -251,7 +270,7 @@ export function useDraftEditor(routeId: string, seed?: DraftDocument) {
       if (!(await isCurrent(s))) return null;
       const copy = await apiPost<Draft>(
         "/drafts",
-        { ...payload, client_id: s.copyId, status: "draft" },
+        { ...payload, client_id: s.copyId },
         undefined,
         s.identity,
       );

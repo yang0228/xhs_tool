@@ -12,6 +12,14 @@ export class ApiError extends Error {
     this.name = "ApiError";
   }
 }
+export async function assertIdentity(identity: ApiIdentity): Promise<void> {
+  const current = await readSettings();
+  if (
+    current.backendUrl !== identity.backendUrl ||
+    current.apiKey !== identity.apiKey
+  )
+    throw new ApiError("账户或后端已切换，请重新打开页面。", 0);
+}
 function detailMessage(detail: unknown): string | undefined {
   if (typeof detail === "string") return detail;
   if (Array.isArray(detail))
@@ -30,7 +38,11 @@ async function request<T>(
   path: string,
   method: string,
   body: unknown,
-  consume: (response: Response, signal: AbortSignal) => Promise<T>,
+  consume: (
+    response: Response,
+    signal: AbortSignal,
+    checkIdentity: () => Promise<void>,
+  ) => Promise<T>,
   externalSignal?: AbortSignal,
   expectedIdentity?: ApiIdentity,
 ): Promise<T> {
@@ -44,6 +56,7 @@ async function request<T>(
   );
   try {
     const settings = await readSettings();
+    const checkIdentity = () => assertIdentity(settings);
     if (
       expectedIdentity &&
       (settings.backendUrl !== expectedIdentity.backendUrl ||
@@ -62,6 +75,7 @@ async function request<T>(
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: controller.signal,
     });
+    await checkIdentity();
     if (!response.ok) {
       let detail: unknown;
       try {
@@ -74,7 +88,8 @@ async function request<T>(
         response.status,
       );
     }
-    const result = await consume(response, controller.signal);
+    const result = await consume(response, controller.signal, checkIdentity);
+    await checkIdentity();
     controller.signal.throwIfAborted();
     return result;
   } catch (error) {
@@ -142,12 +157,13 @@ export function apiPostStream(
   onChunk: (text: string) => void,
   signal?: AbortSignal,
   expectedIdentity?: ApiIdentity,
+  requireCompletion = false,
 ): Promise<string> {
   return request(
     path,
     "POST",
     body,
-    async (response, requestSignal) => {
+    async (response, requestSignal, checkIdentity) => {
       const reader = response.body?.getReader();
       if (!reader) throw new ApiError("No response stream", 0);
       const cancel = () => {
@@ -232,6 +248,7 @@ export function apiPostStream(
         requestSignal.throwIfAborted();
         while (!finished) {
           const { done, value } = await reader.read();
+          await checkIdentity();
           requestSignal.throwIfAborted();
           buffer += done
             ? decoder.decode()
@@ -239,6 +256,11 @@ export function apiPostStream(
           drain(done);
           if (done) break;
         }
+        if (requireCompletion && !finished)
+          throw new ApiError(
+            "生成中断，未收到完成确认；已显示文字仅供核对，请重试。",
+            0,
+          );
         return fullText;
       } finally {
         requestSignal.removeEventListener("abort", cancel);

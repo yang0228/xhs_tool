@@ -1,6 +1,7 @@
 import { apiGet, apiPost } from "./api";
 import { readSettings } from "./settings";
 import type { EncryptedPayload } from "../../shared/types";
+import { restoreRepairEntry, retryRestoreRepairs } from "./backupRepair";
 
 const ITERATIONS = 310_000;
 const FORMAT = "xhs-tool-backup";
@@ -17,7 +18,7 @@ export type BackupRecords = { version: number; user_id: string } & Record<
   Record<string, unknown>[]
 >;
 export interface BackupPayload {
-  version: 1;
+  version: 1 | 2;
   backendUrl: string;
   userId: string;
   createdAt: string;
@@ -62,7 +63,7 @@ export function normalizeBackendUrl(value: string): string {
 function validatePayload(value: unknown): asserts value is BackupPayload {
   if (
     !object(value) ||
-    value.version !== 1 ||
+    ![1, 2].includes(value.version as number) ||
     typeof value.backendUrl !== "string" ||
     typeof value.userId !== "string" ||
     !value.userId ||
@@ -81,7 +82,7 @@ function validatePayload(value: unknown): asserts value is BackupPayload {
     throw new Error("备份密钥无效");
   if (
     !object(value.records) ||
-    value.records.version !== 1 ||
+    value.records.version !== value.version ||
     value.records.user_id !== value.userId ||
     tables.some(
       (table) =>
@@ -90,6 +91,27 @@ function validatePayload(value: unknown): asserts value is BackupPayload {
     )
   )
     throw new Error("备份记录格式无效");
+  const profile = value.records.profile;
+  if (profile !== undefined && profile !== null) {
+    if (
+      !object(profile) ||
+      !Number.isInteger(profile.version) ||
+      Number(profile.version) < 0
+    )
+      throw new Error("备份档案格式无效");
+    const p = profile.encrypted_profile;
+    if (
+      p !== null &&
+      (!object(p) ||
+        typeof p.ciphertext !== "string" ||
+        decode(p.ciphertext).length < 16 ||
+        typeof p.iv !== "string" ||
+        decode(p.iv).length !== 12 ||
+        typeof p.salt !== "string" ||
+        decode(p.salt).length !== 32)
+    )
+      throw new Error("备份档案密文无效");
+  }
   if (!object(value.recovery)) throw new Error("恢复草稿格式无效");
   for (const [name, entry] of Object.entries(value.recovery)) {
     if (
@@ -202,6 +224,7 @@ export async function collectBackup(): Promise<BackupPayload> {
   return withLock("xhs-settings", collectBackupUnlocked);
 }
 async function collectBackupUnlocked(): Promise<BackupPayload> {
+  await retryRestoreRepairs();
   const settings = await readSettings();
   const identity = await apiPost<{ user_id: string }>("/auth/verify");
   const records = await apiGet<BackupRecords>("/backup");
@@ -215,7 +238,7 @@ async function collectBackupUnlocked(): Promise<BackupPayload> {
       .map(([key, entry]) => [key.slice(prefix.length), entry]),
   );
   const payload = {
-    version: 1 as const,
+    version: (records.version === 2 ? 2 : 1) as 1 | 2,
     backendUrl: normalizeBackendUrl(settings.backendUrl),
     userId: identity.user_id,
     createdAt: new Date().toISOString(),
@@ -242,6 +265,8 @@ export async function restoreBackup(
       ),
     );
   });
+  // Repair encryption needs the master-key lock; never recurse into that lock.
+  await retryRestoreRepairs();
 }
 async function restoreBackupUnlocked(
   payload: BackupPayload,
@@ -273,7 +298,9 @@ async function restoreBackupUnlocked(
     if (!(prefix + name in before)) local[prefix + name] = value;
   }
   // Backend validates all records in one transaction. Keys never leave this browser.
-  await request("/backup/restore", payload.records);
+  const restored = await request("/backup/restore", payload.records);
+  const repair = await restoreRepairEntry(payload.records, restored, settings);
+  if (repair) local[repair.key] = repair.value;
   const current = await chrome.storage.local.get(null);
   if (
     current.xhs_master_key &&

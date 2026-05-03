@@ -1,18 +1,26 @@
 import type { Draft, EncryptedPayload } from "../../shared/types";
 import { encryptContent, decryptContent, hashContent } from "./crypto";
 import { readSettings } from "./settings";
+import { parseContext, type DraftContext } from "./creator";
 
 export interface DraftDocument {
   title: string;
   content: string;
   image_ids: string[];
+  status?: Draft["status"];
+  planned_date?: string | null;
+  topic_tags?: string[];
+  context?: DraftContext | null;
 }
 type RecoveryDocument = DraftDocument & { id?: string; version?: number };
 
 export async function encodeDraft(doc: DraftDocument) {
-  doc = { ...doc, image_ids: [...doc.image_ids] };
+  doc = structuredClone(doc);
   const title = await encryptContent(doc.title);
   const content = await encryptContent(doc.content);
+  const context = doc.context
+    ? await encryptContent(JSON.stringify(parseContext(doc.context)))
+    : doc.context;
   return {
     encrypted_title: title.ciphertext,
     encrypted_content: content.ciphertext,
@@ -22,6 +30,14 @@ export async function encodeDraft(doc: DraftDocument) {
     encryption_version: 2 as const,
     title_hash: await hashContent(doc.title),
     image_ids: [...doc.image_ids],
+    ...(doc.status !== undefined ? { status: doc.status } : {}),
+    ...(doc.planned_date !== undefined
+      ? { planned_date: doc.planned_date }
+      : {}),
+    ...(doc.topic_tags !== undefined
+      ? { topic_tags: [...doc.topic_tags] }
+      : {}),
+    ...(doc.context !== undefined ? { encrypted_context: context } : {}),
   };
 }
 
@@ -39,7 +55,22 @@ export async function decodeDraft(draft: Draft): Promise<DraftDocument> {
       iv: draft.content_iv || draft.encryption_iv,
       salt: draft.encryption_salt,
     });
-    return { title, content, image_ids: draft.image_ids ?? [] };
+    const context = draft.encrypted_context
+      ? parseContext(JSON.parse(await decryptContent(draft.encrypted_context)))
+      : draft.encrypted_context;
+    return {
+      title,
+      content,
+      image_ids: draft.image_ids ?? [],
+      ...(draft.status !== undefined ? { status: draft.status } : {}),
+      ...(draft.planned_date !== undefined
+        ? { planned_date: draft.planned_date }
+        : {}),
+      ...(draft.topic_tags !== undefined
+        ? { topic_tags: draft.topic_tags }
+        : {}),
+      ...(draft.encrypted_context !== undefined ? { context } : {}),
+    };
   } catch (error) {
     throw new Error(
       `草稿恢复失败，请恢复原始密钥或完整备份；原始密文已保留。${error instanceof Error ? error.message : ""}`,

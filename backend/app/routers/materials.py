@@ -7,6 +7,7 @@ from ..dependencies import get_current_user
 from ..models.material import Material
 from ..models.user import User
 from ..schemas.material import MaterialCreate, MaterialListResponse, MaterialResponse
+from ..services.ragflow_service import cleanup_indexes, exclude_material, lock_material
 
 router = APIRouter(prefix="/materials", tags=["materials"])
 
@@ -45,10 +46,13 @@ async def get_material(material_id: UUID, user: User = Depends(get_current_user)
 
 @router.delete("/{material_id}")
 async def delete_material(material_id: UUID, user: User = Depends(get_current_user), db=Depends(get_db)):
+    await lock_material(db, user.id, material_id)
     result = await db.execute(select(Material).where(Material.id == material_id, Material.user_id == user.id))
     material = result.scalar_one_or_none()
     if not material:
         raise HTTPException(status_code=404, detail="Material not found")
+    indexes = await exclude_material(db, user.id, material_id)
     await db.delete(material)
     await db.commit()
+    await cleanup_indexes(db, indexes)
     return {"ok": True}

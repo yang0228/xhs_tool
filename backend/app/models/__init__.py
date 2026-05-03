@@ -6,6 +6,7 @@ from .published_post import PublishedPost
 from .post_analytics import PostAnalytics
 from .xhs_credential import XHSCredential
 from .ai_usage import AIUsage
+from .material_rag_index import MaterialRagIndex
 
 __all__ = [
     "User",
@@ -16,4 +17,5 @@ __all__ = [
     "PostAnalytics",
     "XHSCredential",
     "AIUsage",
+    "MaterialRagIndex",
 ]

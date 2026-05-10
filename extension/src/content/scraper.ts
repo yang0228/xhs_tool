@@ -6,6 +6,17 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === "SCRAPE_PAGE") {
     try {
       const documentClone = document.cloneNode(true) as Document;
+      // Short articles can lose Readability's scoring to a longer news feed.
+      // Prefer a declared article body without changing the original page.
+      const articleBody = document.querySelector(
+        '.news-content-parsed, [itemprop="articleBody"]',
+      );
+      if (articleBody) {
+        if (!articleBody.textContent?.trim()) {
+          throw new Error("正文尚未加载，请等待文章加载完成后重试");
+        }
+        documentClone.body.replaceChildren(articleBody.cloneNode(true));
+      }
       const reader = new Readability(documentClone);
       const article = reader.parse();
 
@@ -19,7 +30,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       }
 
       // Extract blockquotes as excerpts
-      const blockquotes = Array.from(document.querySelectorAll("blockquote")).map(
+      const blockquotes = Array.from((articleBody ?? document).querySelectorAll("blockquote")).map(
         (el) => el.textContent?.trim() ?? ""
       ).filter(Boolean);
 

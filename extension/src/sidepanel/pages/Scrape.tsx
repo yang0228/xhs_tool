@@ -5,7 +5,9 @@ import { encryptContent, hashContent } from "../lib/crypto";
 import { readSettings } from "../lib/settings";
 import { scrapeCurrentPage } from "../lib/scraper";
 import { useAppStore } from "../stores/appStore";
-import { ErrorNotice, Icon } from "../components/UI";
+import { ErrorNotice, Icon, PageHeading } from "../components/UI";
+import type { Material } from "../../shared/types";
+import { readRagConsent, syncMaterial } from "../lib/rag";
 
 export default function Scrape() {
   const [loading, setLoading] = useState(false);
@@ -68,8 +70,8 @@ export default function Scrape() {
     setError(null);
     setSaving(true);
     try {
-      if (!(await readSettings()).apiKey)
-        throw new Error("请先在设置中连接账户");
+      const identity = await readSettings();
+      if (!identity.apiKey) throw new Error("请先在设置中连接账户");
       const plain = JSON.stringify({
         format: 2,
         title: content.title,
@@ -80,22 +82,37 @@ export default function Scrape() {
       const hash = await hashContent(
         JSON.stringify([content.title.trim(), content.text.trim()]),
       );
-      await apiPost("/materials", {
-        encrypted_content: encrypted.ciphertext,
-        encryption_iv: encrypted.iv,
-        encryption_salt: encrypted.salt,
-        content_hash: hash,
-        source_url: content.url || null,
-        source_title: content.title,
-        content_type: content.url ? "article" : "note",
-        word_count: content.text.length,
-        tags: tags
-          .split(/[,，]/)
-          .map((t) => t.trim())
-          .filter(Boolean),
-      });
+      const material = await apiPost<Material>(
+        "/materials",
+        {
+          encrypted_content: encrypted.ciphertext,
+          encryption_iv: encrypted.iv,
+          encryption_salt: encrypted.salt,
+          content_hash: hash,
+          source_url: content.url || null,
+          source_title: content.title,
+          content_type: content.url ? "article" : "note",
+          word_count: content.text.length,
+          tags: tags
+            .split(/[,，]/)
+            .map((t) => t.trim())
+            .filter(Boolean),
+        },
+        undefined,
+        identity,
+      );
       setSaved(true);
       addToast("素材已保存，重复内容会自动合并", "success");
+      if (await readRagConsent(identity)) {
+        try {
+          await syncMaterial(material, identity);
+        } catch (e) {
+          setError(
+            "素材已保存；知识库同步失败，可在素材库重试：" +
+              (e instanceof Error ? e.message : String(e)),
+          );
+        }
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "保存失败");
     } finally {
@@ -122,10 +139,7 @@ export default function Scrape() {
   };
   return (
     <div className="page">
-      <div>
-        <p className="eyebrow">COLLECT / 采集</p>
-        <h2>发现值得记录的灵感</h2>
-      </div>
+      <PageHeading eyebrow="COLLECT / 采集" title="发现值得记录的灵感" />
       <p className="muted">从正在阅读的网页开始，建立自己的素材库。</p>
       <div className="card capture-hero">
         <h3>把好内容留在手边</h3>

@@ -1,9 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { Material, PaginatedResponse } from "../../shared/types";
-import { apiDelete, apiGet, apiPost } from "../lib/api";
+import { apiDelete, apiGet, apiPost, type ApiIdentity } from "../lib/api";
 import { readMaterial, type ReadableMaterial } from "../lib/materials";
-import { EmptyState, ErrorNotice } from "../components/UI";
+import { EmptyState, ErrorNotice, PageHeading } from "../components/UI";
+import MaterialRag from "../components/MaterialRag";
+import { readSettings } from "../lib/settings";
+import { syncMaterial } from "../lib/rag";
+import { emptyContext } from "../lib/creator";
+import { recoveryScope } from "../lib/drafts";
 
 export default function Materials() {
   const [items, setItems] = useState<ReadableMaterial[]>([]);
@@ -21,6 +26,8 @@ export default function Materials() {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [revision, setRevision] = useState(0);
+  const [identity, setIdentity] = useState<ApiIdentity>();
+  const loadedIdentity = useRef<ApiIdentity | undefined>(undefined);
   const navigate = useNavigate();
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -34,11 +41,26 @@ export default function Materials() {
     setLoading(true);
     setError(null);
     void (async () => {
+      const origin = await readSettings();
+      if (controller.signal.aborted) return;
+      if (
+        loadedIdentity.current?.backendUrl !== origin.backendUrl ||
+        loadedIdentity.current?.apiKey !== origin.apiKey
+      ) {
+        setSelected({});
+        setItems([]);
+        setTotal(0);
+        setExpanded(null);
+        setDeleting(null);
+      }
+      loadedIdentity.current = origin;
+      setIdentity(origin);
       const filter = tag ? "&tag=" + encodeURIComponent(tag) : "";
       if (!search) {
         const data = await apiGet<PaginatedResponse<Material>>(
           `/materials?page=${page}&limit=20${filter}`,
           controller.signal,
+          origin,
         );
         const decoded = await Promise.all(data.items.map(readMaterial));
         if (!controller.signal.aborted) {
@@ -56,6 +78,7 @@ export default function Materials() {
         const data = await apiGet<PaginatedResponse<Material>>(
           `/materials?page=${cursor}&limit=100${filter}`,
           controller.signal,
+          origin,
         );
         available = data.total;
         received += data.items.length;
@@ -97,16 +120,28 @@ export default function Materials() {
     setBusy(true);
     setError(null);
     try {
+      const current = await readSettings();
+      if (
+        !identity ||
+        current.backendUrl !== identity.backendUrl ||
+        current.apiKey !== identity.apiKey
+      )
+        throw new Error("账号已切换，请重新打开素材库");
       let content = source.map((m) => m.content).join("\n\n---\n\n");
       if (outline) {
         const result = await apiPost<{
           outline: { section: string; key_points: string[] }[];
-        }>("/ai/outline", {
-          materials: source.map((m) => ({
-            title: m.title,
-            content: m.content,
-          })),
-        });
+        }>(
+          "/ai/outline",
+          {
+            materials: source.map((m) => ({
+              title: m.title,
+              content: m.content,
+            })),
+          },
+          undefined,
+          identity,
+        );
         content = result.outline
           .map(
             (s) =>
@@ -116,10 +151,23 @@ export default function Materials() {
       }
       navigate("/drafts/new", {
         state: {
+          seedScope: await recoveryScope(identity),
           seed: {
             title: source.length === 1 ? source[0].title : "新选题",
             content,
             image_ids: [],
+            context: {
+              ...emptyContext(),
+              references: source.map((m) => ({
+                id: "material:" + m.id,
+                material_id: m.id,
+                title: m.title,
+                url: m.source_url,
+                content: m.content.slice(0, 8000),
+                content_hash: m.content_hash,
+                verified: false,
+              })),
+            },
           },
         },
       });
@@ -133,7 +181,7 @@ export default function Materials() {
     setBusy(true);
     setError(null);
     try {
-      await apiDelete("/materials/" + id);
+      await apiDelete("/materials/" + id, undefined, identity);
       setSelected((prev) => {
         const next = { ...prev };
         delete next[id];
@@ -151,15 +199,11 @@ export default function Materials() {
   const shown = items;
   return (
     <div className="page">
-      <div className="page-heading">
-        <div>
-          <p className="eyebrow">LIBRARY / 灵感库</p>
-          <h2>素材库</h2>
-        </div>
+      <PageHeading eyebrow="LIBRARY / 灵感库" title="素材库">
         <Link className="btn btn-primary" to="/scrape">
           ＋ 采集
         </Link>
-      </div>
+      </PageHeading>
       <div className="tabs">
         <Link className="active" to="/materials">
           文字素材
@@ -204,6 +248,25 @@ export default function Materials() {
             </button>
             <button className="text-button" onClick={() => setSelected({})}>
               清空选择
+            </button>
+            <button
+              className="btn"
+              disabled={busy || !identity}
+              onClick={async () => {
+                setBusy(true);
+                setError(null);
+                try {
+                  for (const item of Object.values(selected))
+                    await syncMaterial(item, identity!);
+                  setRevision((r) => r + 1);
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : "索引同步失败");
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              为所选素材建索引
             </button>
           </div>
           <p className="help">生成提纲时，所选正文会发送给已配置的 AI 服务。</p>
@@ -316,6 +379,12 @@ export default function Materials() {
                   </div>
                 </div>
               )}
+              <MaterialRag
+                key={m.id + ":" + revision}
+                material={m}
+                identity={identity}
+                unreadable={m.unreadable}
+              />
             </article>
           ))}
           {!shown.length && !!items.length && (

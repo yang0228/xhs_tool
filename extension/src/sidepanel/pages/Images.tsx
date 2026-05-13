@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import type { ImageRecord, PaginatedResponse } from "../../shared/types";
 import { apiDelete, apiGet, apiPost, type ApiIdentity } from "../lib/api";
 import { readSettings } from "../lib/settings";
-import { EmptyState, ErrorNotice } from "../components/UI";
+import { EmptyState, ErrorNotice, PageHeading } from "../components/UI";
 
 const LIMIT = 20;
 const MAX_BYTES = 20 * 1024 * 1024;
@@ -221,12 +221,7 @@ export default function Images() {
 
   return (
     <div className="page">
-      <div className="page-heading">
-        <div>
-          <p className="eyebrow">LIBRARY / 灵感库</p>
-          <h2>图片库</h2>
-        </div>
-      </div>
+      <PageHeading eyebrow="LIBRARY / 灵感库" title="图片库" />
       <div className="tabs">
         <Link to="/materials">文字素材</Link>
         <Link className="active" to="/images">

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import Settings from "../../../src/sidepanel/pages/Settings";
 import { resetChromeMocks, chrome } from "../../mocks/chrome";
 
@@ -16,7 +17,7 @@ describe("Settings Page", () => {
         aiModel: "model",
       },
     });
-    render(<Settings />);
+    render(<Settings />, { wrapper: MemoryRouter });
     const input = await screen.findByDisplayValue("https://custom.api");
     fireEvent.change(input, { target: { value: "https://next.api/" } });
     fireEvent.click(screen.getByRole("button", { name: "保存设置" }));
@@ -26,7 +27,7 @@ describe("Settings Page", () => {
     ).toMatchObject({ backendUrl: "https://next.api", aiModel: "model" });
   });
   it("rejects invalid URL without saving", async () => {
-    render(<Settings />);
+    render(<Settings />, { wrapper: MemoryRouter });
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "保存设置" })).toBeEnabled(),
     );
@@ -48,7 +49,7 @@ describe("Settings Page", () => {
           json: async () => ({ detail: "error" }),
         }),
     );
-    render(<Settings />);
+    render(<Settings />, { wrapper: MemoryRouter });
     const register = screen.getByRole("button", { name: "初始化新账号" });
     await waitFor(() => expect(register).toBeEnabled());
     fireEvent.click(register);
@@ -59,7 +60,7 @@ describe("Settings Page", () => {
     await chrome.storage.local.set({
       settings: { backendUrl: "https://custom.api", apiKey: "my-key" },
     });
-    render(<Settings />);
+    render(<Settings />, { wrapper: MemoryRouter });
     await screen.findByDisplayValue("my-key");
     expect(screen.getByRole("button", { name: "初始化新账号" })).toBeDisabled();
   });
@@ -76,7 +77,7 @@ describe("Settings Page", () => {
         json: async () => ({ detail: "invalid" }),
       });
     vi.stubGlobal("fetch", fetcher);
-    render(<Settings />);
+    render(<Settings />, { wrapper: MemoryRouter });
     await screen.findByDisplayValue("my-key");
     fireEvent.click(screen.getByRole("button", { name: "测试连接与身份" }));
     expect(

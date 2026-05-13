@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Link } from "react-router-dom";
 import { useAppStore } from "../stores/appStore";
 
 export function Icon({ name, size = 20 }: { name: string; size?: number }) {
@@ -60,6 +61,60 @@ export function Icon({ name, size = 20 }: { name: string; size?: number }) {
     >
       {paths[name] || paths.edit}
     </svg>
+  );
+}
+export function PageHeading({
+  eyebrow,
+  title,
+  children,
+  tools = true,
+}: {
+  eyebrow?: string;
+  title: ReactNode;
+  children?: ReactNode;
+  tools?: boolean;
+}) {
+  return (
+    <div className="page-heading">
+      <div className="page-heading-line">
+        {eyebrow ? <p className="eyebrow">{eyebrow}</p> : <h2>{title}</h2>}
+        <div className="page-tools">
+          {!eyebrow && children}
+          {tools && (
+            <>
+              <a
+                className="icon-button"
+                href={
+                  typeof chrome.runtime.getURL === "function"
+                    ? chrome.runtime.getURL("src/sidepanel/index.html")
+                    : "#"
+                }
+                target="_blank"
+                rel="noreferrer"
+                title="在独立标签页打开"
+                aria-label="在独立标签页打开"
+              >
+                <Icon name="expand" size={17} />
+              </a>
+              <Link
+                className="icon-button"
+                to="/settings"
+                aria-label="设置"
+                title="设置"
+              >
+                <Icon name="settings" size={19} />
+              </Link>
+            </>
+          )}
+        </div>
+      </div>
+      {eyebrow && (
+        <div className="page-heading-line">
+          <h2>{title}</h2>
+          {children && <div className="row">{children}</div>}
+        </div>
+      )}
+    </div>
   );
 }
 export function EmptyState({

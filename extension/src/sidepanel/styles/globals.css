@@ -135,9 +135,26 @@ h3 {
 }
 .page-heading {
   display: flex;
+  flex-direction: column;
+}
+.page-heading-line {
+  display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
+  min-height: 32px;
+}
+.page-heading-line .eyebrow {
+  margin-bottom: 0;
+}
+.page-heading-line > .row {
+  justify-content: flex-end;
+}
+.page-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 .eyebrow {
   font-size: 10px;
@@ -168,6 +185,26 @@ h3 {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+.form-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.form-grid > label {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+th,
+td {
+  padding: 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
 }
 .card {
   background: white;

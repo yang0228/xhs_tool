@@ -3,7 +3,8 @@ import { Link } from "react-router-dom";
 import type { Draft, PaginatedResponse } from "../../shared/types";
 import { apiDelete, apiGet } from "../lib/api";
 import { clearRecovery, decodeDraft } from "../lib/drafts";
-import { EmptyState, ErrorNotice } from "../components/UI";
+import { EmptyState, ErrorNotice, PageHeading } from "../components/UI";
+import { draftStatuses } from "../lib/creator";
 
 type Item = Draft & { title: string; preview: string; unreadable?: boolean };
 export default function Drafts() {
@@ -73,20 +74,27 @@ export default function Drafts() {
   };
   return (
     <div className="page">
-      <div className="page-heading">
-        <div>
-          <p className="eyebrow">CREATE / 创作</p>
-          <h2>草稿</h2>
-        </div>
+      <PageHeading eyebrow="CREATE / 创作" title="草稿">
         <Link className="btn btn-primary" to="/drafts/new">
           新建
         </Link>
-      </div>
+        <Link
+          className="btn"
+          to="/drafts/new"
+          state={{
+            seed: { title: "", content: "", image_ids: [], status: "idea" },
+          }}
+        >
+          新建选题
+        </Link>
+      </PageHeading>
       <p className="muted">从灵感到成稿，每一次修改都值得保存。</p>
       <div className="tabs">
         {[
           ["", "全部"],
+          ["idea", "选题"],
           ["draft", "写作中"],
+          ["ready", "待发布"],
           ["published", "已发布"],
         ].map(([value, text]) => (
           <button
@@ -118,10 +126,16 @@ export default function Drafts() {
                 <div className="row between">
                   <h3>{d.title}</h3>
                   <span className="badge">
-                    {d.status === "published" ? "已发布" : "写作中"}
+                    {draftStatuses[d.status] ?? "创作中"}
                   </span>
                 </div>
                 <p className="preview-text">{d.preview}</p>
+                {d.planned_date && (
+                  <p className="help">计划 {d.planned_date}</p>
+                )}
+                {!!d.topic_tags?.length && (
+                  <p className="help">{d.topic_tags.join(" · ")}</p>
+                )}
               </Link>
               <div className="row between">
                 <span className="muted">

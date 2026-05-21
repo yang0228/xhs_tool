@@ -5,14 +5,20 @@ import { apiGet, apiPost, apiPostStream } from "../lib/api";
 import type { DraftDocument } from "../lib/drafts";
 import { useDraftEditor } from "../hooks/useDraftEditor";
 import { useAppStore } from "../stores/appStore";
-import { ErrorNotice } from "../components/UI";
+import { ErrorNotice, PageHeading } from "../components/UI";
+import CreatorBrief from "../components/CreatorBrief";
+import GroundedWriter from "../components/GroundedWriter";
+import CardStudio from "../components/CardStudio";
+import { emptyContext } from "../lib/creator";
 
 export default function Editor() {
   const { id = "new" } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const seed = (location.state as { seed?: DraftDocument } | null)?.seed;
-  const editor = useDraftEditor(id, seed);
+  const { seed, seedScope } =
+    (location.state as { seed?: DraftDocument; seedScope?: string } | null) ??
+    {};
+  const editor = useDraftEditor(id, seed, seedScope);
   const { doc, setDoc, ready, status, error } = editor;
   const [aiBusy, setAiBusy] = useState("");
   const [suggestion, setSuggestion] = useState("");
@@ -107,8 +113,14 @@ export default function Editor() {
           "/ai/rewrite",
           {
             content: doc.content,
-            style: "自然、真诚的小红书分享",
-            instruction: "保留事实，不编造亲身经历。",
+            style: doc.context?.profile
+              ? JSON.stringify(doc.context.profile)
+              : "自然、真诚的小红书分享",
+            instruction:
+              "保留事实，不编造亲身经历。" +
+              (doc.context
+                ? "\n单篇简报：" + JSON.stringify(doc.context.brief)
+                : ""),
           },
           (chunk) => {
             if (!controller.signal.aborted) setSuggestion((s) => s + chunk);
@@ -140,6 +152,21 @@ export default function Editor() {
   };
   const apply = (next: DraftDocument) => {
     setPrevious(doc);
+    if (
+      next.content !== doc.content &&
+      next.context === doc.context &&
+      next.context
+    )
+      next = {
+        ...next,
+        context: {
+          ...next.context,
+          references: next.context.references.map((r) => ({
+            ...r,
+            verified: false,
+          })),
+        },
+      };
     setDoc(next);
     setSuggestion("");
     setTitles([]);
@@ -160,15 +187,14 @@ export default function Editor() {
   };
   return (
     <div className="page">
-      <div className="page-heading">
-        <div>
-          <p className="eyebrow">CREATE / 创作</p>
-          <h2>{id === "new" && !editor.recordId ? "新建草稿" : "编辑草稿"}</h2>
-        </div>
+      <PageHeading
+        eyebrow="CREATE / 创作"
+        title={id === "new" && !editor.recordId ? "新建草稿" : "编辑草稿"}
+      >
         <Link className="text-button" to="/drafts">
           全部草稿
         </Link>
-      </div>
+      </PageHeading>
       <p className="muted">把灵感写下来，AI 帮你打磨表达。</p>
       <ErrorNotice error={error} />
       {error?.includes("冲突") && !editor.recoveryConflict && (
@@ -224,6 +250,12 @@ export default function Editor() {
               {preview ? "返回编辑" : "预览笔记"}
             </button>
           </div>
+          <CreatorBrief
+            key={id}
+            doc={doc}
+            onChange={setDoc}
+            identity={editor.identity}
+          />
           {preview ? (
             <div className="card">
               <h3>{doc.title || "未命名笔记"}</h3>
@@ -253,7 +285,23 @@ export default function Editor() {
                 className="field editor-body"
                 placeholder="开始写作… 或从素材库带入灵感"
                 value={doc.content}
-                onChange={(e) => setDoc({ ...doc, content: e.target.value })}
+                onChange={(e) =>
+                  setDoc({
+                    ...doc,
+                    content: e.target.value,
+                    ...(doc.context
+                      ? {
+                          context: {
+                            ...doc.context,
+                            references: doc.context.references.map((r) => ({
+                              ...r,
+                              verified: false,
+                            })),
+                          },
+                        }
+                      : {}),
+                  })
+                }
               />
               <p className="help">
                 标题 {Array.from(doc.title).length} 字 · 正文{" "}
@@ -262,12 +310,36 @@ export default function Editor() {
               </p>
             </div>
           )}
+          <GroundedWriter
+            key={"rag-" + id}
+            doc={doc}
+            identity={editor.identity}
+            onUpdateReferences={(update) =>
+              setDoc((current) => ({
+                ...current,
+                context: {
+                  ...(current.context ?? emptyContext()),
+                  references: update(current.context?.references ?? []),
+                },
+              }))
+            }
+            onApply={(content, references) =>
+              apply({
+                ...doc,
+                content,
+                context: { ...(doc.context ?? emptyContext()), references },
+              })
+            }
+          />
           <div className="card stack">
             <div className="row between">
               <h3>AI 写作助手</h3>
               <span className="badge">由你决定采用</span>
             </div>
-            <p className="help">操作时，当前正文会发送给已配置的 AI 服务。</p>
+            <p className="help">
+              操作时，当前正文会发送给已配置的 AI
+              服务。个人风格用于改写和带引用写作。
+            </p>
             <div className="row">
               <button
                 className="btn"
@@ -437,6 +509,20 @@ export default function Editor() {
               </>
             )}
           </div>
+          <CardStudio
+            key={"cards-" + id}
+            title={doc.title}
+            content={doc.content}
+            imageIds={doc.image_ids}
+            value={doc.context?.cards}
+            identity={editor.identity}
+            onChange={(cards) =>
+              setDoc((current) => ({
+                ...current,
+                context: { ...(current.context ?? emptyContext()), cards },
+              }))
+            }
+          />
           <div className="editor-actions">
             <button className="btn" onClick={() => void editor.save()}>
               保存草稿

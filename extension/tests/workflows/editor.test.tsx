@@ -85,6 +85,72 @@ async function seed() {
   return id;
 }
 describe("draft editing workflow", () => {
+  it("keeps newer body edits when an earlier style load finishes", async () => {
+    const id = await seed();
+    const encrypted = await encryptContent(
+      JSON.stringify({
+        position: "效率",
+        audience: "新手",
+        tone: "真诚",
+        avoid: "夸大",
+        examples: [],
+      }),
+    );
+    const original = vi.mocked(fetch).getMockImplementation()!;
+    let finish!: (value: Response) => void;
+    vi.mocked(fetch).mockImplementation((input, init) =>
+      new URL(String(input)).pathname === "/api/profile"
+        ? new Promise((resolve) => {
+            finish = resolve;
+          })
+        : original(input, init),
+    );
+    mount(id);
+    await screen.findByDisplayValue("原始正文");
+    fireEvent.click(screen.getByRole("button", { name: "使用个人风格" }));
+    await waitFor(() => expect(finish).toBeDefined());
+    fireEvent.change(screen.getByLabelText("正文"), {
+      target: { value: "等待风格时的新修改" },
+    });
+    finish(Response.json({ encrypted_profile: encrypted, version: 1 }));
+    await screen.findByText(/已采用风格快照/);
+    expect(screen.getByLabelText("正文")).toHaveValue("等待风格时的新修改");
+  });
+  it("syncs a title-only idea and keeps its brief when reopened", async () => {
+    const original = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (
+        new URL(String(input)).pathname === "/api/drafts" &&
+        init?.method === "POST"
+      ) {
+        const body = JSON.parse(String(init.body));
+        const id = body.client_id;
+        records[id] = { ...body, id, version: 1 };
+        return Response.json(records[id]);
+      }
+      return original(input, init);
+    });
+    mount();
+    await screen.findByLabelText("标题");
+    fireEvent.change(screen.getByLabelText("创作状态"), {
+      target: { value: "idea" },
+    });
+    fireEvent.change(screen.getByLabelText("标题"), {
+      target: { value: "只有题目的选题" },
+    });
+    fireEvent.change(screen.getByLabelText("核心观点"), {
+      target: { value: "一条可验证的观点" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存草稿" }));
+    await waitFor(() => expect(Object.values(records)).toHaveLength(1));
+    const record = Object.values(records)[0];
+    expect(record.status).toBe("idea");
+    const { decodeDraft } = await import("../../src/sidepanel/lib/drafts");
+    expect((await decodeDraft(record)).context?.brief.angle).toBe(
+      "一条可验证的观点",
+    );
+    expect((await decodeDraft(record)).content).toBe("");
+  });
   it("loads existing text, saves an update and reopens the same draft", async () => {
     const id = await seed();
     const view = mount(id);

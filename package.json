@@ -1,0 +1,14 @@
+{
+  "name": "xhs-tool",
+  "private": true,
+  "workspaces": ["extension"],
+  "scripts": {
+    "dev:extension": "cd extension && npm run dev",
+    "dev:backend": "cd backend && uvicorn app.main:app --reload --port 8000",
+    "build:extension": "cd extension && npm run build",
+    "db:up": "docker-compose up -d postgres",
+    "db:down": "docker-compose down",
+    "db:migrate": "cd backend && alembic upgrade head",
+    "db:revision": "cd backend && alembic revision --autogenerate -m"
+  }
+}

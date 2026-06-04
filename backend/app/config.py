@@ -1,5 +1,6 @@
 from __future__ import annotations
 from pydantic_settings import BaseSettings
+from pathlib import Path
 
 
 class Settings(BaseSettings):
@@ -19,7 +20,7 @@ class Settings(BaseSettings):
     secret_key: str = "change-me"
     debug: bool = False
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    model_config = {"env_file": Path(__file__).resolve().parents[2] / ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 settings = Settings()

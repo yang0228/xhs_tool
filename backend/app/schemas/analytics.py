@@ -1,23 +1,27 @@
 from __future__ import annotations
 from datetime import datetime
-
 from typing import Optional
+from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
-class PostAnalyticsItem(BaseModel):
-    id: str
-    view_count: int
-    like_count: int
-    comment_count: int
-    share_count: int
-    collect_count: int
+class PostAnalyticsCreate(BaseModel):
+    view_count: int = Field(default=0, ge=0, le=2147483647, strict=True)
+    like_count: int = Field(default=0, ge=0, le=2147483647, strict=True)
+    comment_count: int = Field(default=0, ge=0, le=2147483647, strict=True)
+    share_count: int = Field(default=0, ge=0, le=2147483647, strict=True)
+    collect_count: int = Field(default=0, ge=0, le=2147483647, strict=True)
+
+
+class PostAnalyticsItem(PostAnalyticsCreate):
+    id: UUID
     collected_at: datetime
+    model_config = {'from_attributes': True}
 
 
 class PostAnalyticsSummary(BaseModel):
-    post_id: str
+    post_id: UUID
     title_hash: Optional[str]
     xhs_post_url: Optional[str]
     published_at: datetime

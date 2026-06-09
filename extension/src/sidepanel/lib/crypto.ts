@@ -4,7 +4,7 @@ const KEY_STORAGE_KEY = "xhs_master_key";
 const ALGORITHM = "AES-GCM";
 const KEY_LENGTH = 256;
 
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
+function arrayBufferToBase64(buffer: ArrayBufferLike): string {
   const bytes = new Uint8Array(buffer);
   let binary = "";
   for (let i = 0; i < bytes.length; i++) {
@@ -22,21 +22,38 @@ function base64ToArrayBuffer(base64: string): ArrayBuffer {
   return bytes.buffer;
 }
 
-export async function getOrCreateMasterKey(): Promise<{ key: CryptoKey; salt: Uint8Array }> {
-  const stored = await chrome.storage.local.get([KEY_STORAGE_KEY]);
+interface StoredKey {
+  keyBase64: string;
+  saltBase64: string;
+}
+
+async function loadMasterKey(
+  create: boolean,
+): Promise<{ key: CryptoKey; salt: Uint8Array }> {
+  const stored = await chrome.storage.local.get<{
+    [KEY_STORAGE_KEY]?: StoredKey;
+  }>([KEY_STORAGE_KEY]);
   if (stored[KEY_STORAGE_KEY]) {
     const { keyBase64, saltBase64 } = stored[KEY_STORAGE_KEY];
     const keyBuffer = base64ToArrayBuffer(keyBase64);
-    const key = await crypto.subtle.importKey("raw", keyBuffer, ALGORITHM, false, ["encrypt", "decrypt"]);
+    const key = await crypto.subtle.importKey(
+      "raw",
+      keyBuffer,
+      ALGORITHM,
+      false,
+      ["encrypt", "decrypt"],
+    );
     const salt = new Uint8Array(base64ToArrayBuffer(saltBase64));
     return { key, salt };
   }
+
+  if (!create) throw new Error("本地加密密钥缺失，请从备份恢复密钥后重试。");
 
   // Generate new key
   const key = await crypto.subtle.generateKey(
     { name: ALGORITHM, length: KEY_LENGTH },
     true,
-    ["encrypt", "decrypt"]
+    ["encrypt", "decrypt"],
   );
   const salt = crypto.getRandomValues(new Uint8Array(32));
   const keyBuffer = await crypto.subtle.exportKey("raw", key);
@@ -51,11 +68,35 @@ export async function getOrCreateMasterKey(): Promise<{ key: CryptoKey; salt: Ui
   return { key, salt };
 }
 
-export async function encryptContent(plaintext: string): Promise<EncryptedPayload> {
+let keyCreation: Promise<{ key: CryptoKey; salt: Uint8Array }> | undefined;
+export async function getOrCreateMasterKey(): Promise<{
+  key: CryptoKey;
+  salt: Uint8Array;
+}> {
+  if (!keyCreation) {
+    const create = () => loadMasterKey(true);
+    keyCreation = Promise.resolve(
+      navigator.locks
+        ? navigator.locks.request("xhs-master-key", create)
+        : create(),
+    ).finally(() => {
+      keyCreation = undefined;
+    });
+  }
+  return keyCreation;
+}
+
+export async function encryptContent(
+  plaintext: string,
+): Promise<EncryptedPayload> {
   const { key, salt } = await getOrCreateMasterKey();
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const encoded = new TextEncoder().encode(plaintext);
-  const ciphertext = await crypto.subtle.encrypt({ name: ALGORITHM, iv }, key, encoded);
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: ALGORITHM, iv },
+    key,
+    encoded,
+  );
 
   return {
     ciphertext: arrayBufferToBase64(ciphertext),
@@ -64,11 +105,17 @@ export async function encryptContent(plaintext: string): Promise<EncryptedPayloa
   };
 }
 
-export async function decryptContent(payload: EncryptedPayload): Promise<string> {
-  const { key } = await getOrCreateMasterKey();
+export async function decryptContent(
+  payload: EncryptedPayload,
+): Promise<string> {
+  const { key } = await loadMasterKey(false);
   const iv = new Uint8Array(base64ToArrayBuffer(payload.iv));
   const ciphertext = base64ToArrayBuffer(payload.ciphertext);
-  const decrypted = await crypto.subtle.decrypt({ name: ALGORITHM, iv }, key, ciphertext);
+  const decrypted = await crypto.subtle.decrypt(
+    { name: ALGORITHM, iv },
+    key,
+    ciphertext,
+  );
   return new TextDecoder().decode(decrypted);
 }
 
@@ -76,5 +123,7 @@ export async function hashContent(plaintext: string): Promise<string> {
   const encoded = new TextEncoder().encode(plaintext);
   const hash = await crypto.subtle.digest("SHA-256", encoded);
   const bytes = new Uint8Array(hash);
-  return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }

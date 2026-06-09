@@ -96,3 +96,22 @@ describe("crypto", () => {
     });
   });
 });
+
+describe("key preservation", () => {
+  beforeEach(() => resetChromeMocks());
+  it("does not replace a missing key while trying to decrypt old data", async () => {
+    const encrypted = await encryptContent("irreplaceable");
+    resetChromeMocks();
+    await expect(decryptContent(encrypted)).rejects.toThrow(/key|密钥/i);
+    const { chrome } = await import("../../mocks/chrome");
+    expect(await chrome.storage.local.get("xhs_master_key")).toEqual({});
+  });
+  it("simultaneous first encryptions remain decryptable after initialization", async () => {
+    const results = await Promise.all(
+      Array.from({ length: 12 }, (_, i) => encryptContent(`text ${i}`)),
+    );
+    await expect(Promise.all(results.map(decryptContent))).resolves.toEqual(
+      Array.from({ length: 12 }, (_, i) => `text ${i}`),
+    );
+  });
+});

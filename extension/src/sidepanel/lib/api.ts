@@ -1,101 +1,252 @@
-async function getBaseUrl(): Promise<string> {
-  const result = await chrome.storage.local.get(["settings"]);
-  return result.settings?.backendUrl || "http://localhost:8000/api";
-}
+import { readSettings } from "./settings";
+import type { UserSettings } from "../../shared/types";
 
-async function getAuthHeaders(): Promise<HeadersInit> {
-  const result = await chrome.storage.local.get(["settings"]);
-  const apiKey: string = result.settings?.apiKey || "";
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  if (apiKey) {
-    headers["Authorization"] = "Bearer " + apiKey;
+export type ApiIdentity = Pick<UserSettings, "backendUrl" | "apiKey">;
+
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+  ) {
+    super(message);
+    this.name = "ApiError";
   }
-  return headers;
+}
+function detailMessage(detail: unknown): string | undefined {
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail))
+    return detail
+      .map((item) => {
+        if (item && typeof item === "object" && "msg" in item) {
+          return `${Array.isArray(item.loc) ? item.loc.join(".") + ": " : ""}${item.msg}`;
+        }
+        return detailMessage(item) || "Invalid request";
+      })
+      .join("; ");
+  if (detail && typeof detail === "object") return JSON.stringify(detail);
 }
 
-export async function apiGet<T>(path: string): Promise<T> {
-  const base = await getBaseUrl();
-  const headers = await getAuthHeaders();
-  const res = await fetch(base + path, { headers });
-  if (!res.ok) throw new Error("API error: " + res.status);
-  return res.json();
-}
-
-export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
-  const base = await getBaseUrl();
-  const headers = await getAuthHeaders();
-  const res = await fetch(base + path, {
-    method: "POST", headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || "API error: " + res.status);
+async function request<T>(
+  path: string,
+  method: string,
+  body: unknown,
+  consume: (response: Response, signal: AbortSignal) => Promise<T>,
+  externalSignal?: AbortSignal,
+  expectedIdentity?: ApiIdentity,
+): Promise<T> {
+  const controller = new AbortController();
+  const abort = () => controller.abort(externalSignal?.reason);
+  externalSignal?.addEventListener("abort", abort, { once: true });
+  if (externalSignal?.aborted) abort();
+  const timer = setTimeout(
+    () => controller.abort(new ApiError("请求超时 (timeout)，请重试。", 0)),
+    120_000,
+  );
+  try {
+    const settings = await readSettings();
+    if (
+      expectedIdentity &&
+      (settings.backendUrl !== expectedIdentity.backendUrl ||
+        settings.apiKey !== expectedIdentity.apiKey)
+    ) {
+      throw new ApiError("账户或后端已切换，请重新打开草稿。", 0);
+    }
+    controller.signal.throwIfAborted();
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (settings.apiKey) headers.Authorization = "Bearer " + settings.apiKey;
+    const response = await fetch(settings.backendUrl + path, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      let detail: unknown;
+      try {
+        detail = (await response.json()).detail;
+      } catch {
+        /* Non-JSON HTTP errors retain their status. */
+      }
+      throw new ApiError(
+        detailMessage(detail) || "API error: " + response.status,
+        response.status,
+      );
+    }
+    const result = await consume(response, controller.signal);
+    controller.signal.throwIfAborted();
+    return result;
+  } catch (error) {
+    if (controller.signal.aborted) throw controller.signal.reason;
+    if (error instanceof ApiError) throw error;
+    throw new ApiError(
+      error instanceof Error ? error.message : "网络请求失败",
+      0,
+    );
+  } finally {
+    clearTimeout(timer);
+    externalSignal?.removeEventListener("abort", abort);
   }
-  return res.json();
+}
+const jsonResponse = async <T>(response: Response): Promise<T> =>
+  response.status === 204 ? (undefined as T) : response.json();
+export function apiGet<T>(
+  path: string,
+  signal?: AbortSignal,
+  expectedIdentity?: ApiIdentity,
+): Promise<T> {
+  return request(
+    path,
+    "GET",
+    undefined,
+    jsonResponse<T>,
+    signal,
+    expectedIdentity,
+  );
+}
+export function apiPost<T>(
+  path: string,
+  body?: unknown,
+  signal?: AbortSignal,
+  expectedIdentity?: ApiIdentity,
+): Promise<T> {
+  return request(path, "POST", body, jsonResponse<T>, signal, expectedIdentity);
+}
+export function apiPut<T>(
+  path: string,
+  body: unknown,
+  signal?: AbortSignal,
+  expectedIdentity?: ApiIdentity,
+): Promise<T> {
+  return request(path, "PUT", body, jsonResponse<T>, signal, expectedIdentity);
+}
+export function apiDelete(
+  path: string,
+  signal?: AbortSignal,
+  expectedIdentity?: ApiIdentity,
+): Promise<void> {
+  return request(
+    path,
+    "DELETE",
+    undefined,
+    async () => {},
+    signal,
+    expectedIdentity,
+  );
 }
 
-export async function apiPut<T>(path: string, body: unknown): Promise<T> {
-  const base = await getBaseUrl();
-  const headers = await getAuthHeaders();
-  const res = await fetch(base + path, {
-    method: "PUT", headers,
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error("API error: " + res.status);
-  return res.json();
-}
-
-export async function apiDelete(path: string): Promise<void> {
-  const base = await getBaseUrl();
-  const headers = await getAuthHeaders();
-  const res = await fetch(base + path, { method: "DELETE", headers });
-  if (!res.ok) throw new Error("API error: " + res.status);
-}
-
-// SSE stream: calls onChunk with each text chunk, resolves with full text when done
-export async function apiPostStream(
-  path: string, body: unknown, onChunk: (text: string) => void
+export function apiPostStream(
+  path: string,
+  body: unknown,
+  onChunk: (text: string) => void,
+  signal?: AbortSignal,
+  expectedIdentity?: ApiIdentity,
 ): Promise<string> {
-  const base = await getBaseUrl();
-  const headers = await getAuthHeaders();
-  const res = await fetch(base + path, { method: "POST", headers, body: JSON.stringify(body) });
-  if (!res.ok) throw new Error("API error: " + res.status);
-
-  const reader = res.body?.getReader();
-  if (!reader) throw new Error("No response stream");
-
-  const decoder = new TextDecoder();
-  let fullText = "";
-  let buffer = "";
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-
-    // Parse SSE lines: "data: {...}\n\n"
-    const lines = buffer.split("\n");
-    buffer = lines.pop() || ""; // keep incomplete line in buffer
-
-    for (const line of lines) {
-      if (line.startsWith("data: ")) {
-        const data = line.slice(6);
-        if (data === "[DONE]") continue;
+  return request(
+    path,
+    "POST",
+    body,
+    async (response, requestSignal) => {
+      const reader = response.body?.getReader();
+      if (!reader) throw new ApiError("No response stream", 0);
+      const cancel = () => {
+        void reader.cancel().catch(() => {});
+      };
+      requestSignal.addEventListener("abort", cancel, { once: true });
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let fullText = "";
+      let data: string[] = [];
+      let event = "";
+      let finished = false;
+      const dispatch = () => {
+        if (!data.length) {
+          event = "";
+          return;
+        }
+        const raw = data.join("\n");
+        data = [];
+        if (raw === "[DONE]") {
+          finished = true;
+          return;
+        }
+        let parsed: unknown;
         try {
-          const parsed = JSON.parse(data);
-          const chunk = parsed.chunk || "";
+          parsed = JSON.parse(raw);
+        } catch {
+          parsed = raw;
+        }
+        if (
+          event === "error" ||
+          (parsed && typeof parsed === "object" && "error" in parsed)
+        ) {
+          const detail =
+            parsed && typeof parsed === "object" && "error" in parsed
+              ? parsed.error
+              : parsed;
+          throw new ApiError(detailMessage(detail) || "AI 生成失败", 0);
+        }
+        event = "";
+        const chunk =
+          typeof parsed === "string"
+            ? parsed
+            : parsed && typeof parsed === "object" && "chunk" in parsed
+              ? parsed.chunk
+              : "";
+        if (typeof chunk === "string" && chunk) {
           fullText += chunk;
           onChunk(chunk);
-        } catch {
-          fullText += data;
-          onChunk(data);
         }
+      };
+      const line = (value: string) => {
+        if (!value) {
+          dispatch();
+          return;
+        }
+        if (value.startsWith(":")) return;
+        const colon = value.indexOf(":");
+        const field = colon < 0 ? value : value.slice(0, colon);
+        const text = colon < 0 ? "" : value.slice(colon + 1).replace(/^ /, "");
+        if (field === "data") data.push(text);
+        if (field === "event") event = text;
+      };
+      const drain = (atEnd: boolean) => {
+        while (!finished) {
+          const match = /\r\n|\r|\n/.exec(buffer);
+          if (
+            !match ||
+            (!atEnd && match[0] === "\r" && match.index === buffer.length - 1)
+          )
+            break;
+          line(buffer.slice(0, match.index));
+          buffer = buffer.slice(match.index + match[0].length);
+        }
+        if (atEnd && !finished) {
+          if (buffer) line(buffer);
+          buffer = "";
+          dispatch();
+        }
+      };
+      try {
+        requestSignal.throwIfAborted();
+        while (!finished) {
+          const { done, value } = await reader.read();
+          requestSignal.throwIfAborted();
+          buffer += done
+            ? decoder.decode()
+            : decoder.decode(value, { stream: true });
+          drain(done);
+          if (done) break;
+        }
+        return fullText;
+      } finally {
+        requestSignal.removeEventListener("abort", cancel);
+        await reader.cancel().catch(() => {});
+        reader.releaseLock();
       }
-    }
-  }
-
-  return fullText;
+    },
+    signal,
+    expectedIdentity,
+  );
 }

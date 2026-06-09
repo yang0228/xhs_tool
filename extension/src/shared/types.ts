@@ -14,6 +14,7 @@ export interface ScrapedContent {
 }
 
 export interface Material {
+  tags?: string[];
   id: string;
   user_id: string;
   encrypted_content: string;
@@ -29,6 +30,9 @@ export interface Material {
 }
 
 export interface Draft {
+  content_iv?: string | null;
+  encryption_version?: number;
+  image_ids?: string[];
   id: string;
   user_id: string;
   material_id: string | null;

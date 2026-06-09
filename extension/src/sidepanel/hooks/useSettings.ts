@@ -1,30 +1,31 @@
 import { useEffect, useState } from "react";
-import type { UserSettings } from "../../../shared/types";
-
-const defaults: UserSettings = {
-  apiKey: "",
-  backendUrl: "http://localhost:8000/api",
-  aiModel: "claude-sonnet-4-20250514",
-};
+import type { UserSettings } from "../../shared/types";
+import { defaultSettings, readSettings, saveSettings } from "../lib/settings";
 
 export function useSettings() {
-  const [settings, setSettings] = useState<UserSettings>(defaults);
+  const [settings, setSettings] = useState<UserSettings>(defaultSettings);
   const [loaded, setLoaded] = useState(false);
-
+  const [error, setError] = useState<string | null>(null);
   useEffect(() => {
-    chrome.storage.local.get(["settings"], (result) => {
-      if (result.settings) {
-        setSettings({ ...defaults, ...result.settings });
-      }
-      setLoaded(true);
-    });
+    let active = true;
+    readSettings()
+      .then((value) => {
+        if (active) setSettings(value);
+      })
+      .catch((reason) => {
+        if (active) setError(String(reason));
+      })
+      .finally(() => {
+        if (active) setLoaded(true);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
-
   const updateSettings = async (partial: Partial<UserSettings>) => {
-    const next = { ...settings, ...partial };
+    const next = await saveSettings(partial);
     setSettings(next);
-    await chrome.storage.local.set({ settings: next });
+    setError(null);
   };
-
-  return { settings, updateSettings, loaded };
+  return { settings, updateSettings, loaded, error };
 }

@@ -2,32 +2,28 @@ import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import NavBar from "../../src/sidepanel/components/NavBar";
-
-describe("NavBar", () => {
-  it("renders all 7 navigation links", () => {
-    render(<MemoryRouter><NavBar /></MemoryRouter>);
-    expect(screen.getByText("抓取")).toBeInTheDocument();
-    expect(screen.getByText("草稿")).toBeInTheDocument();
-    expect(screen.getByText("素材")).toBeInTheDocument();
-    expect(screen.getByText("图片")).toBeInTheDocument();
-    expect(screen.getByText("发布")).toBeInTheDocument();
-    expect(screen.getByText("数据")).toBeInTheDocument();
-    expect(screen.getByText("设置")).toBeInTheDocument();
-  });
-
-  it("marks active link with red-500 color class", () => {
+describe("creator navigation", () => {
+  it("links collection, library, creation and publishing to their routes", () => {
     render(
-      <MemoryRouter initialEntries={["/scrape"]}>
+      <MemoryRouter>
         <NavBar />
       </MemoryRouter>,
     );
-    const link = screen.getByText("抓取").closest("a");
-    expect(link?.className).toContain("text-red-500");
+    for (const [name, path] of [
+      ["采集", "/scrape"],
+      ["素材库", "/materials"],
+      ["创作", "/drafts"],
+      ["发布", "/publish"],
+    ])
+      expect(screen.getByRole("link", { name })).toHaveAttribute("href", path);
+    expect(screen.getAllByRole("link")).toHaveLength(4);
   });
-
-  it("renders icons for each tab", () => {
-    render(<MemoryRouter><NavBar /></MemoryRouter>);
-    expect(screen.getByText("🔍")).toBeInTheDocument();
-    expect(screen.getByText("✏️")).toBeInTheDocument();
+  it("keeps the library selected on the image subpage", () => {
+    render(
+      <MemoryRouter initialEntries={["/images"]}>
+        <NavBar />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("link", { name: "素材库" })).toHaveClass("active");
   });
 });

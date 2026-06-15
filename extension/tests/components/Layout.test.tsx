@@ -5,17 +5,29 @@ import Layout from "../../src/sidepanel/components/Layout";
 
 describe("Layout", () => {
   it("renders header with app name", () => {
-    render(<MemoryRouter><Layout /></MemoryRouter>);
+    render(
+      <MemoryRouter>
+        <Layout />
+      </MemoryRouter>,
+    );
     expect(screen.getByText("XHS Tool")).toBeInTheDocument();
   });
 
   it("renders NavBar", () => {
-    render(<MemoryRouter><Layout /></MemoryRouter>);
-    expect(screen.getByText("抓取")).toBeInTheDocument();
+    render(
+      <MemoryRouter>
+        <Layout />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("link", { name: "采集" })).toBeInTheDocument();
   });
 
   it("renders main content area", () => {
-    const { container } = render(<MemoryRouter><Layout /></MemoryRouter>);
+    const { container } = render(
+      <MemoryRouter>
+        <Layout />
+      </MemoryRouter>,
+    );
     expect(container.querySelector("main")).toBeInTheDocument();
   });
 });

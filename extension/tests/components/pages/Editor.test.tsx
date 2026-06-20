@@ -1,52 +1,32 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { beforeEach, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import Editor from "../../../src/sidepanel/pages/Editor";
-
-vi.mock("../../../src/sidepanel/lib/api", () => ({ apiPost: vi.fn(), apiPostStream: vi.fn() }));
-vi.mock("../../../src/sidepanel/lib/crypto", () => ({ encryptContent: vi.fn(), hashContent: vi.fn() }));
-const ms = { addToast: vi.fn() };
-vi.mock("../../../src/sidepanel/stores/appStore", () => ({
-  useAppStore: (sel: (s: typeof ms) => unknown) => sel(ms),
-}));
-
-function renderEditor(id = "new") {
+import { resetChromeMocks } from "../../mocks/chrome";
+beforeEach(() => resetChromeMocks());
+function mount() {
   return render(
-    <MemoryRouter initialEntries={[`/drafts/${id}`]}>
-      <Routes><Route path="/drafts/:id" element={<Editor />} /></Routes>
+    <MemoryRouter initialEntries={["/drafts/new"]}>
+      <Routes>
+        <Route path="/drafts/:id" element={<Editor />} />
+      </Routes>
     </MemoryRouter>,
   );
 }
-
-describe("Editor Page", () => {
-  beforeEach(() => { vi.clearAllMocks(); });
-
-  it("renders new draft title", () => {
-    renderEditor();
-    expect(screen.getByText("新建草稿")).toBeInTheDocument();
-  });
-
-  it("renders title and content inputs", () => {
-    renderEditor();
-    expect(screen.getByPlaceholderText("输入标题（最多20字）")).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("开始写作... 或使用 AI 工具生成内容")).toBeInTheDocument();
-  });
-
-  it("renders AI buttons", () => {
-    renderEditor();
-    expect(screen.getByText("AI 生成标题")).toBeInTheDocument();
-    expect(screen.getByText("AI 改写")).toBeInTheDocument();
-    expect(screen.getByText("AI 润色")).toBeInTheDocument();
-  });
-
-  it("renders save and publish buttons", () => {
-    renderEditor();
-    expect(screen.getByText("保存草稿")).toBeInTheDocument();
-    expect(screen.getByText("发布")).toBeInTheDocument();
-  });
-
-  it("shows character counter", () => {
-    renderEditor();
-    expect(screen.getByText("0 / 1000")).toBeInTheDocument();
-  });
+it("allows writing beyond publication limits without truncating drafts", async () => {
+  mount();
+  const content = await screen.findByLabelText("正文");
+  const text = "长文".repeat(1000);
+  fireEvent.change(content, { target: { value: text } });
+  expect(content).toHaveValue(text);
+  expect(screen.getByText(/正文 2000 字/)).toBeInTheDocument();
+});
+it("shows editor preview without changing source text", async () => {
+  mount();
+  const content = await screen.findByLabelText("正文");
+  fireEvent.change(content, { target: { value: "保留这一段文字" } });
+  fireEvent.click(screen.getByRole("button", { name: "预览笔记" }));
+  expect(screen.getByText("保留这一段文字")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "返回编辑" }));
+  expect(screen.getByLabelText("正文")).toHaveValue("保留这一段文字");
 });

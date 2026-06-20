@@ -1,36 +1,22 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { afterEach, expect, it, vi } from "vitest";
+import { render, screen, cleanup } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import Publish from "../../../src/sidepanel/pages/Publish";
-
-vi.mock("../../../src/sidepanel/lib/api", () => ({ apiGet: vi.fn(), apiPost: vi.fn() }));
-vi.mock("../../../src/sidepanel/lib/crypto", () => ({ encryptContent: vi.fn() }));
-const ms = { addToast: vi.fn() };
-vi.mock("../../../src/sidepanel/stores/appStore", () => ({
-  useAppStore: (sel: (s: typeof ms) => unknown) => sel(ms),
-}));
-
-import { apiGet } from "../../../src/sidepanel/lib/api";
-const mockGet = apiGet as ReturnType<typeof vi.fn>;
-
-describe("Publish Page", () => {
-  beforeEach(() => { vi.clearAllMocks(); });
-
-  it("renders title", () => {
-    mockGet.mockResolvedValue({ posts: [] });
-    render(<Publish />);
-    expect(screen.getByText("发布管理")).toBeInTheDocument();
-  });
-
-  it("renders capture cookies button", () => {
-    mockGet.mockResolvedValue({ posts: [] });
-    render(<Publish />);
-    expect(screen.getByText("捕获 XHS 会话")).toBeInTheDocument();
-    expect(screen.getByText("首次使用需要捕获小红书登录 Cookie")).toBeInTheDocument();
-  });
-
-  it("shows empty publish records", async () => {
-    mockGet.mockResolvedValue({ posts: [] });
-    render(<Publish />);
-    expect(await screen.findByText("暂无发布记录")).toBeInTheDocument();
-  });
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
+it("offers manual publishing preparation without a nonfunctional cookie capture", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => Response.json({ items: [], total: 0, page: 1 })),
+  );
+  render(
+    <MemoryRouter>
+      <Publish />
+    </MemoryRouter>,
+  );
+  expect(await screen.findByText("暂无发布记录")).toBeInTheDocument();
+  expect(screen.getByLabelText("选择草稿")).toBeInTheDocument();
+  expect(screen.queryByText("捕获 XHS 会话")).not.toBeInTheDocument();
 });

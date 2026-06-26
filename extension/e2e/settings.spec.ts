@@ -1,32 +1,16 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { getExtensionId, openSidePanel } from "./helpers";
-
-test.describe("Settings", () => {
-  test("navigates to settings page", async ({ context }) => {
-    const extId = await getExtensionId(context);
-    const sidePanel = await openSidePanel(context, extId);
-
-    await sidePanel.locator("text=设置").first().click();
-    await expect(sidePanel.locator("text=后端地址")).toBeVisible({ timeout: 5_000 });
-    await expect(sidePanel.locator("text=API Key")).toBeVisible();
-  });
-
-  test("backend URL input is editable", async ({ context }) => {
-    const extId = await getExtensionId(context);
-    const sidePanel = await openSidePanel(context, extId);
-
-    await sidePanel.locator("text=设置").first().click();
-    const urlInput = sidePanel.locator('input[type="text"]').first();
-    await urlInput.clear();
-    await urlInput.fill("https://my-api.example.com");
-    expect(await urlInput.inputValue()).toBe("https://my-api.example.com");
-  });
-
-  test("about section is visible", async ({ context }) => {
-    const extId = await getExtensionId(context);
-    const sidePanel = await openSidePanel(context, extId);
-
-    await sidePanel.locator("text=设置").first().click();
-    await expect(sidePanel.locator("text=0.1.0")).toBeVisible({ timeout: 5_000 });
-  });
+test("persists settings and verifies the selected identity", async ({
+  context,
+}) => {
+  const page = await openSidePanel(context, await getExtensionId(context));
+  await page.getByRole("link", { name: "设置", exact: true }).click();
+  await expect(page.getByLabel("API Key", { exact: true })).toHaveValue(
+    "test-key",
+  );
+  await page.getByRole("button", { name: "测试连接与身份" }).click();
+  await expect(page.getByRole("status")).toContainText("身份验证通过");
+  await page.getByRole("button", { name: "保存设置" }).click();
+  await expect(page.getByRole("status")).toContainText("设置已保存");
+  await page.screenshot({ path: "/tmp/xhs-tool-settings.png", fullPage: true });
 });

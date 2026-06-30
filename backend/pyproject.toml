@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "xhs-tool-backend"
 version = "0.1.0"
 description = "XHS Tool Backend API"
+license = { text = "Apache-2.0" }
 requires-python = ">=3.9"
 dependencies = [
     "fastapi>=0.115.0",

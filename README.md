@@ -1,6 +1,25 @@
-# XHS Tool
+# 小红书创作工具箱 XHS Tool v0.1.0
 
-用于个人小红书内容创作的 Chrome 扩展：采集网页与选中文字、整理素材、AI 辅助写作、加密保存草稿、准备发布图文并手动记录数据。
+<p align="center">
+  <strong>网页采集 · 素材整理 · AI 辅助写作 · 加密草稿 · 发布准备</strong>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Platform-Chrome%20Extension-4285F4?style=flat-square" alt="Platform: Chrome Extension">
+  <img src="https://img.shields.io/badge/Version-v0.1.0-00897B?style=flat-square" alt="Version: v0.1.0">
+  <img src="https://img.shields.io/badge/Frontend-React%20%2B%20TypeScript-3178C6?style=flat-square" alt="Frontend: React + TypeScript">
+  <img src="https://img.shields.io/badge/Backend-FastAPI%20%2B%20Python-009688?style=flat-square" alt="Backend: FastAPI + Python">
+  <img src="https://img.shields.io/badge/Database-PostgreSQL%2016-4169E1?style=flat-square" alt="Database: PostgreSQL 16">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-78A22F?style=flat-square" alt="License: Apache-2.0"></a>
+</p>
+
+---
+
+## 项目简介
+
+XHS Tool 是面向个人小红书内容创作的 Chrome 扩展，将「网页采集 → 素材整理 → AI 辅助写作 → 草稿保存 → 发布准备与记录」串成一条创作流程，帮助你从收集灵感到完成图文内容。
+
+项目采用 React + TypeScript 构建扩展界面，FastAPI + Python 提供后端服务。素材与草稿正文在浏览器端加密后保存到 PostgreSQL，图片存储在 Cloudflare R2；AI 写作调用你配置的 Anthropic 兼容接口。支持自行部署后端、加密备份和手动记录发布数据。
 
 <p align="center">
   <a href="docs/previews/editor.png">

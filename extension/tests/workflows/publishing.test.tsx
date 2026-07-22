@@ -8,7 +8,7 @@ import {
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import Publish from "../../src/sidepanel/pages/Publish";
-import { encryptContent } from "../../src/sidepanel/lib/crypto";
+import { decryptContent, encryptContent } from "../../src/sidepanel/lib/crypto";
 import { resetChromeMocks } from "../mocks/chrome";
 let saved: any[];
 beforeEach(async () => {
@@ -72,14 +72,44 @@ it("previews a saved draft and records an actual publication URL", async () => {
   });
   fireEvent.click(screen.getByRole("button", { name: "记录发布" }));
   await waitFor(() =>
-    expect(saved).toEqual([
+    expect(saved).toMatchObject([
       {
         draft_id: "draft-1",
+        expected_version: 1,
         xhs_post_url: "https://www.xiaohongshu.com/explore/example",
       },
     ]),
   );
+  const snapshot = JSON.parse(await decryptContent(saved[0].snapshot));
+  expect(snapshot.document.content).toBe("完整正文");
+  expect(snapshot.version).toBe(1);
+  expect(JSON.stringify(saved[0])).not.toContain("完整正文");
   await screen.findByRole("link", { name: "查看笔记 ↗" });
+});
+it("rejects publication when the saved version changed after preview", async () => {
+  const original = vi.mocked(fetch).getMockImplementation()!;
+  let reads = 0;
+  vi.mocked(fetch).mockImplementation(async (input, init) => {
+    const response = await original(input, init);
+    if (
+      new URL(String(input)).pathname === "/api/drafts/draft-1" &&
+      ++reads > 1
+    )
+      return Response.json({ ...(await response.json()), version: 2 });
+    return response;
+  });
+  render(
+    <MemoryRouter initialEntries={["/publish?draft=draft-1"]}>
+      <Publish />
+    </MemoryRouter>,
+  );
+  await screen.findByText("完整正文");
+  fireEvent.change(screen.getByLabelText("已发布链接"), {
+    target: { value: "https://xhslink.com/a/test" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "记录发布" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("新版本");
+  expect(saved).toHaveLength(0);
 });
 it("does not record an unrelated URL", async () => {
   render(

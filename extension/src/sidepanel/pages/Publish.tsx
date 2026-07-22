@@ -1,15 +1,25 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import type {
   Draft,
   PaginatedResponse,
   PublishedPost,
 } from "../../shared/types";
-import { apiGet, apiPost } from "../lib/api";
+import { apiGet, apiPost, type ApiIdentity } from "../lib/api";
 import { decodeDraft, type DraftDocument } from "../lib/drafts";
-import { EmptyState, ErrorNotice } from "../components/UI";
+import { EmptyState, ErrorNotice, PageHeading } from "../components/UI";
 import { useAppStore } from "../stores/appStore";
 import Analytics from "./Analytics";
+import PublishSchedule from "../components/PublishSchedule";
+import PublicationSnapshot from "../components/PublicationSnapshot";
+import { buildPublicationZip, downloadBlob } from "../lib/cards";
+import {
+  checkSavedVersion,
+  encodePublicationSnapshot,
+  localDateTime,
+  validatePublication,
+} from "../lib/publication";
+import { readSettings } from "../lib/settings";
 
 export default function Publish() {
   const [params, setParams] = useSearchParams();
@@ -18,6 +28,7 @@ export default function Publish() {
   const [draft, setDraft] = useState<DraftDocument | null>(null);
   const [options, setOptions] = useState<{ id: string; title: string }[]>([]);
   const [posts, setPosts] = useState<PublishedPost[]>([]);
+  const [postIdentity, setPostIdentity] = useState<ApiIdentity>();
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [revision, setRevision] = useState(0);
@@ -28,6 +39,14 @@ export default function Publish() {
   const [recording, setRecording] = useState(false);
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
   const [imageError, setImageError] = useState<string | null>(null);
+  const [recordVersion, setRecordVersion] = useState(0),
+    [exportedVersion, setExportedVersion] = useState<number | null>(null),
+    [exporting, setExporting] = useState(false),
+    [reload, setReload] = useState(0),
+    [referencesReviewed, setReferencesReviewed] = useState(false);
+  const [publishedAt, setPublishedAt] = useState(() => localDateTime());
+  const [identity, setIdentity] = useState<ApiIdentity>();
+  const operation = useRef(0);
   const addToast = useAppStore((s) => s.addToast);
   useEffect(() => {
     const controller = new AbortController();
@@ -63,13 +82,19 @@ export default function Publish() {
   useEffect(() => {
     const controller = new AbortController();
     setPostError(null);
-    apiGet<PaginatedResponse<PublishedPost>>(
-      "/publish/posts?page=" + page + "&limit=20",
-      controller.signal,
-    )
-      .then((data) => {
-        setPosts(data.items);
-        setTotal(data.total);
+    setPosts([]);
+    readSettings()
+      .then(async (origin) => {
+        const data = await apiGet<PaginatedResponse<PublishedPost>>(
+          "/publish/posts?page=" + page + "&limit=20",
+          controller.signal,
+          origin,
+        );
+        if (!controller.signal.aborted) {
+          setPostIdentity(origin);
+          setPosts(data.items);
+          setTotal(data.total);
+        }
       })
       .catch((e) => {
         if (!controller.signal.aborted) setPostError(e.message);
@@ -78,14 +103,30 @@ export default function Publish() {
   }, [page, revision]);
   useEffect(() => {
     const controller = new AbortController();
+    operation.current++;
     setDraft(null);
+    setRecordVersion(0);
+    setExportedVersion(null);
+    setReferencesReviewed(false);
+    setExporting(false);
     setImageUrls({});
     setImageError(null);
     setError(null);
     if (draftId) {
       setLoading(true);
-      apiGet<Draft>("/drafts/" + draftId, controller.signal)
-        .then(decodeDraft)
+      readSettings()
+        .then(async (origin) => {
+          const result = await apiGet<Draft>(
+            "/drafts/" + draftId,
+            controller.signal,
+            origin,
+          );
+          if (!controller.signal.aborted) {
+            setIdentity(origin);
+            setRecordVersion(result.version);
+          }
+          return decodeDraft(result);
+        })
         .then(async (data) => {
           if (controller.signal.aborted) return;
           setDraft(data);
@@ -116,8 +157,42 @@ export default function Publish() {
           if (!controller.signal.aborted) setLoading(false);
         });
     } else setLoading(false);
-    return () => controller.abort();
-  }, [draftId]);
+    return () => {
+      controller.abort();
+      operation.current++;
+    };
+  }, [draftId, reload]);
+  const frozenDraft = async () => {
+    if (!draft || !recordVersion) throw new Error("请先选择并读取已保存草稿");
+    const frozen = structuredClone(draft);
+    await validatePublication(frozen);
+    if (frozen.context?.references.length && !referencesReviewed)
+      throw new Error("请先逐条核对素材引用并勾选确认");
+    await checkSavedVersion(draftId, recordVersion, identity);
+    return frozen;
+  };
+  const exportPackage = async () => {
+    const current = operation.current,
+      version = recordVersion;
+    setExporting(true);
+    setError(null);
+    try {
+      const frozen = await frozenDraft();
+      const blob = await buildPublicationZip(
+        { ...frozen, context: frozen.context ?? undefined },
+        identity,
+      );
+      await checkSavedVersion(draftId, version, identity);
+      if (current !== operation.current) return;
+      downloadBlob(blob, "xhs-publication-v" + version + ".zip");
+      setExportedVersion(version);
+    } catch (e) {
+      if (current === operation.current)
+        setError(e instanceof Error ? e.message : "导出失败");
+    } finally {
+      if (current === operation.current) setExporting(false);
+    }
+  };
   const copy = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -155,6 +230,7 @@ export default function Publish() {
     setError(null);
     setRecording(true);
     try {
+      const frozen = await frozenDraft();
       const parsed = new URL(url.trim());
       const host = parsed.hostname;
       if (
@@ -167,12 +243,22 @@ export default function Publish() {
         parsed.password
       )
         throw new Error("请填写实际发布后的小红书 HTTPS 笔记链接");
-      await apiPost("/publish/records", {
-        draft_id: draftId,
-        xhs_post_url: url.trim(),
-      });
+      await apiPost(
+        "/publish/records",
+        {
+          draft_id: draftId,
+          xhs_post_url: url.trim(),
+          expected_version: recordVersion,
+          snapshot: await encodePublicationSnapshot(frozen, recordVersion),
+          template_id: frozen.context?.cards?.template ?? null,
+          published_at: new Date(publishedAt).toISOString(),
+        },
+        undefined,
+        identity,
+      );
       setUrl("");
       setRevision((r) => r + 1);
+      setReload((r) => r + 1);
       addToast("发布链接已记录", "success");
     } catch (e) {
       setError(e instanceof Error ? e.message : "记录失败");
@@ -182,10 +268,7 @@ export default function Publish() {
   };
   return (
     <div className="page">
-      <div>
-        <p className="eyebrow">PUBLISH / 发布</p>
-        <h2>让创作被看见</h2>
-      </div>
+      <PageHeading eyebrow="PUBLISH / 发布" title="让创作被看见" />
       <div className="tabs">
         <button
           className={tab === "prepare" ? "active" : ""}
@@ -199,8 +282,16 @@ export default function Publish() {
         >
           数据复盘
         </button>
+        <button
+          className={tab === "schedule" ? "active" : ""}
+          onClick={() => setTab("schedule")}
+        >
+          发布排期
+        </button>
       </div>
-      {tab === "analytics" ? (
+      {tab === "schedule" ? (
+        <PublishSchedule />
+      ) : tab === "analytics" ? (
         <Analytics />
       ) : (
         <>
@@ -250,6 +341,38 @@ export default function Publish() {
                     复制正文
                   </button>
                 </div>
+                {!!draft.context?.references.length && (
+                  <label className="check-label">
+                    <input
+                      type="checkbox"
+                      checked={referencesReviewed}
+                      onChange={(e) => setReferencesReviewed(e.target.checked)}
+                    />
+                    我已逐条核对本篇素材引用
+                  </label>
+                )}
+                <div className="row">
+                  <button
+                    className="btn btn-primary"
+                    disabled={exporting || recording}
+                    onClick={() => void exportPackage()}
+                  >
+                    {exporting ? "生成发布包中…" : "导出完整发布包 ZIP"}
+                  </button>
+                  <button
+                    className="text-button"
+                    disabled={exporting || recording}
+                    onClick={() => setReload((r) => r + 1)}
+                  >
+                    重新加载草稿
+                  </button>
+                </div>
+                <p className="help">
+                  预览对应已保存草稿 v{recordVersion}。
+                  {exportedVersion
+                    ? `已导出 v${exportedVersion}；继续修改后需重新导出。`
+                    : "发布包包含标题、正文、来源和有序图片。"}
+                </p>
               </div>
               <ErrorNotice error={imageError} />
               <div className="image-grid">
@@ -286,6 +409,15 @@ export default function Publish() {
                   onChange={(e) => setUrl(e.target.value)}
                   placeholder="https://www.xiaohongshu.com/explore/…"
                 />
+                <label>
+                  实际发布时间
+                  <input
+                    className="field"
+                    type="datetime-local"
+                    value={publishedAt}
+                    onChange={(e) => setPublishedAt(e.target.value)}
+                  />
+                </label>
                 <button
                   className="btn"
                   disabled={recording || !url.trim()}
@@ -311,7 +443,7 @@ export default function Publish() {
             />
           ) : (
             posts.map((p) => (
-              <div className="card row between" key={p.id}>
+              <div className="card stack" key={p.id}>
                 <div>
                   <h3>
                     {options.find((d) => d.id === p.draft_id)?.title ||
@@ -330,6 +462,9 @@ export default function Publish() {
                   >
                     查看笔记 ↗
                   </a>
+                )}
+                {postIdentity && (
+                  <PublicationSnapshot post={p} identity={postIdentity} />
                 )}
               </div>
             ))

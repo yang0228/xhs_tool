@@ -1,5 +1,12 @@
 import { useEffect, useState } from "react";
 import { readSettings, saveSettings } from "../lib/settings";
+import CreatorProfile from "../components/CreatorProfile";
+import RagSettings from "../components/RagSettings";
+import { PageHeading } from "../components/UI";
+import {
+  pendingRestoreRepairCount,
+  retryRestoreRepairs,
+} from "../lib/backupRepair";
 import {
   collectBackup,
   downloadBackup,
@@ -29,6 +36,8 @@ export default function Settings() {
   const [file, setFile] = useState<File | null>(null);
   const [pending, setPending] = useState<BackupPayload | null>(null);
   const [confirmed, setConfirmed] = useState(false);
+  const [repairs, setRepairs] = useState(0);
+  const [savedConnection, setSavedConnection] = useState("");
   useEffect(() => {
     let active = true;
     readSettings()
@@ -37,6 +46,12 @@ export default function Settings() {
           setBackendUrl(settings.backendUrl);
           setApiKey(settings.apiKey);
           setLoaded(true);
+          setSavedConnection(
+            JSON.stringify([settings.backendUrl, settings.apiKey]),
+          );
+          void pendingRestoreRepairCount()
+            .then(setRepairs)
+            .catch(() => {});
         }
       })
       .catch((reason) => {
@@ -62,6 +77,7 @@ export default function Settings() {
     const url = normalizeBackendUrl(backendUrl);
     await saveSettings({ backendUrl: url, apiKey: apiKey.trim() });
     setBackendUrl(url);
+    setSavedConnection(JSON.stringify([url, apiKey.trim()]));
     setPending(null);
     setConfirmed(false);
   };
@@ -100,6 +116,7 @@ export default function Settings() {
     await saveSettings({ backendUrl: url, apiKey: data.api_key });
     setApiKey(data.api_key);
     setBackendUrl(url);
+    setSavedConnection(JSON.stringify([url, data.api_key]));
     setPending(null);
     setStatus("新账号已初始化，API Key 已保存；请妥善保管");
   };
@@ -117,11 +134,8 @@ export default function Settings() {
   };
   return (
     <div className="page">
-      <div>
-        <p className="eyebrow">工作台偏好</p>
-        <h2>设置</h2>
-        <p className="muted">连接你的后端，保管账号与创作数据。</p>
-      </div>
+      <PageHeading eyebrow="工作台偏好" title="设置" />
+      <p className="muted">连接你的后端，保管账号与创作数据。</p>
       <section className="card stack">
         <h3 className="section-title">连接与账号</h3>
         <label className="field-label" htmlFor="backend-url">
@@ -186,8 +200,44 @@ export default function Settings() {
           初始化新账号
         </button>
       </section>
+      {loaded &&
+        savedConnection !== JSON.stringify([backendUrl, apiKey.trim()]) && (
+          <p className="notice">
+            请先保存连接设置，再管理该账号的创作档案和知识库。
+          </p>
+        )}
+      <fieldset
+        disabled={
+          !loaded ||
+          busy ||
+          savedConnection !== JSON.stringify([backendUrl, apiKey.trim()])
+        }
+        className="stack"
+        style={{ border: 0, padding: 0, minWidth: 0 }}
+      >
+        <CreatorProfile key={savedConnection} />
+        <RagSettings key={"rag:" + savedConnection} />
+      </fieldset>
       <section className="card stack">
         <h3 className="section-title">加密备份</h3>
+        {repairs > 0 && (
+          <div className="notice">
+            有 {repairs} 份恢复的草稿待修复引用。
+            <button
+              className="btn"
+              disabled={busy}
+              onClick={() =>
+                run(async () => {
+                  await retryRestoreRepairs();
+                  setRepairs(await pendingRestoreRepairCount());
+                  setStatus("恢复引用已修复");
+                })
+              }
+            >
+              重试恢复引用
+            </button>
+          </div>
+        )}
         <p className="muted">
           备份包含素材、草稿、图片引用、发布记录、指标、本地密钥及待恢复编辑。图片文件仍保存在原存储服务。密码无法找回，请保存在安全的地方。
         </p>

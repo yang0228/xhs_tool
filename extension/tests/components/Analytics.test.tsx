@@ -7,6 +7,7 @@ import {
   cleanup,
 } from "@testing-library/react";
 import Analytics from "../../src/sidepanel/pages/Analytics";
+import { MemoryRouter } from "react-router-dom";
 let saved: any;
 beforeEach(() => {
   saved = null;
@@ -42,7 +43,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 it("shows recorded metrics and saves a new measurement", async () => {
-  render(<Analytics />);
+  render(<MemoryRouter><Analytics /></MemoryRouter>);
   await screen.findByDisplayValue(120);
   expect(screen.getByText("120")).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText("阅读"), { target: { value: "200" } });
@@ -58,7 +59,7 @@ it("shows recorded metrics and saves a new measurement", async () => {
   );
 });
 it("rejects negative metrics without submitting them", async () => {
-  render(<Analytics />);
+  render(<MemoryRouter><Analytics /></MemoryRouter>);
   await screen.findByDisplayValue(120);
   fireEvent.change(screen.getByLabelText("阅读"), { target: { value: "-1" } });
   fireEvent.click(screen.getByRole("button", { name: "保存本次数据" }));

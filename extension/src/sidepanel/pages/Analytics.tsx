@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "../lib/api";
-import { EmptyState, ErrorNotice } from "../components/UI";
+import { EmptyState, ErrorNotice, PageHeading } from "../components/UI";
+import ContentReview from "../components/ContentReview";
 interface Metrics {
   view_count: number;
   like_count: number;
@@ -34,6 +35,7 @@ function MetricForm({ post, onSaved }: { post: Post; onSaved: () => void }) {
   const [values, setValues] = useState<Metrics>({ ...zero, ...post.latest });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [observed, setObserved] = useState("");
   return (
     <div className="card stack">
       <div className="row between">
@@ -71,6 +73,15 @@ function MetricForm({ post, onSaved }: { post: Post; onSaved: () => void }) {
         ))}
       </div>
       <ErrorNotice error={error} />
+      <label>
+        数据观察时间（留空为现在）
+        <input
+          className="field"
+          type="datetime-local"
+          value={observed}
+          onChange={(e) => setObserved(e.target.value)}
+        />
+      </label>
       <button
         className="btn"
         disabled={busy}
@@ -88,7 +99,12 @@ function MetricForm({ post, onSaved }: { post: Post; onSaved: () => void }) {
             const payload = Object.fromEntries(
               fields.map(([key]) => [key, values[key]]),
             );
-            await apiPost("/analytics/posts/" + post.post_id, payload);
+            await apiPost("/analytics/posts/" + post.post_id, {
+              ...payload,
+              ...(observed
+                ? { collected_at: new Date(observed).toISOString() }
+                : {}),
+            });
             onSaved();
           } catch (e) {
             setError(e instanceof Error ? e.message : "保存失败");
@@ -119,7 +135,7 @@ function MetricForm({ post, onSaved }: { post: Post; onSaved: () => void }) {
     </div>
   );
 }
-export default function Analytics() {
+export default function Analytics({ embedded = false }: { embedded?: boolean }) {
   const [posts, setPosts] = useState<Post[]>([]);
   const [days, setDays] = useState(90);
   const [revision, setRevision] = useState(0);
@@ -151,8 +167,7 @@ export default function Analytics() {
   );
   return (
     <div className="page">
-      <div className="row between">
-        <h2>数据复盘</h2>
+      <PageHeading title="数据复盘" tools={!embedded}>
         <select
           className="field"
           style={{ width: "auto" }}
@@ -164,11 +179,12 @@ export default function Analytics() {
           <option value={90}>近 90 天</option>
           <option value={365}>近一年</option>
         </select>
-      </div>
+      </PageHeading>
       <p className="muted">
         记录创作中心的真实数据，观察每篇笔记的表现。当前使用手动录入。
       </p>
       <ErrorNotice error={error} retry={() => setRevision((r) => r + 1)} />
+      <ContentReview onImported={() => setRevision((r) => r + 1)} />
       <div className="metrics-grid">
         {fields.slice(0, 4).map(([key, label]) => (
           <div className="metric" key={key}>

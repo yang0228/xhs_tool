@@ -292,7 +292,7 @@ export default function Publish() {
       {tab === "schedule" ? (
         <PublishSchedule />
       ) : tab === "analytics" ? (
-        <Analytics />
+        <Analytics embedded />
       ) : (
         <>
           <div className="notice">

@@ -1,16 +1,22 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import Layout from "../../src/sidepanel/components/Layout";
+import { PageHeading } from "../../src/sidepanel/components/UI";
 
 describe("Layout", () => {
-  it("renders header with app name", () => {
+  it("keeps the settings and standalone view controls in the page heading", () => {
     render(
       <MemoryRouter>
-        <Layout />
+        <Routes>
+          <Route element={<Layout />}>
+            <Route path="/" element={<PageHeading eyebrow="COLLECT / 采集" title="采集" />} />
+          </Route>
+        </Routes>
       </MemoryRouter>,
     );
-    expect(screen.getByText("XHS Tool")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "设置" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "在独立标签页打开" })).toBeInTheDocument();
   });
 
   it("renders NavBar", () => {
@@ -30,4 +36,5 @@ describe("Layout", () => {
     );
     expect(container.querySelector("main")).toBeInTheDocument();
   });
+
 });

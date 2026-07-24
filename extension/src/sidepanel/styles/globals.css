@@ -85,41 +85,6 @@ h3 {
   margin: auto;
   background: #f7f6f3;
 }
-.app-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 15px 20px;
-  border-bottom: 1px solid var(--line);
-  background: #ffffffc9;
-  flex-shrink: 0;
-}
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 0.2px;
-}
-.brand small {
-  display: block;
-  font-size: 10px;
-  font-weight: 400;
-  color: var(--muted);
-  margin-top: 2px;
-  letter-spacing: 1px;
-}
-.brand-mark {
-  width: 33px;
-  height: 33px;
-  border-radius: 11px;
-  background: var(--accent);
-  color: white;
-  display: grid;
-  place-items: center;
-  font-size: 17px;
-}
 .app-main {
   flex: 1;
   overflow: auto;
@@ -630,9 +595,6 @@ label > .field {
   .app-main {
     padding: 32px;
   }
-  .app-header {
-    padding: 17px 32px;
-  }
   .image-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
@@ -650,9 +612,6 @@ label > .field {
 @media (max-width: 350px) {
   .app-main {
     padding: 18px 12px;
-  }
-  .app-header {
-    padding: 12px;
   }
   .btn {
     padding: 8px 10px;

@@ -101,6 +101,7 @@ h3 {
 .page-heading {
   display: flex;
   flex-direction: column;
+  gap: 10px;
 }
 .page-heading-line {
   display: flex;

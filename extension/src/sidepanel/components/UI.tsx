@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAppStore } from "../stores/appStore";
 
 export function Icon({ name, size = 20 }: { name: string; size?: number }) {
@@ -76,6 +76,9 @@ export function PageHeading({
   children?: ReactNode;
   tools?: boolean;
 }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const isSettings = location.pathname === "/settings";
   return (
     <div className="page-heading">
       <div className="page-heading-line">
@@ -100,9 +103,17 @@ export function PageHeading({
               </a>
               <Link
                 className="icon-button"
-                to="/settings"
+                to={isSettings ? "/scrape" : "/settings"}
+                state={isSettings ? undefined : { settingsReturn: true }}
+                replace={isSettings}
+                onClick={(event) => {
+                  if (isSettings && location.state?.settingsReturn) {
+                    event.preventDefault();
+                    navigate(-1);
+                  }
+                }}
                 aria-label="设置"
-                title="设置"
+                title={isSettings ? "返回原页面" : "设置"}
               >
                 <Icon name="settings" size={19} />
               </Link>

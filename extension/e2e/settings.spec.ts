@@ -13,4 +13,6 @@ test("persists settings and verifies the selected identity", async ({
   await page.getByRole("button", { name: "保存设置" }).click();
   await expect(page.getByRole("status")).toContainText("设置已保存");
   await page.screenshot({ path: "/tmp/xhs-tool-settings.png", fullPage: true });
+  await page.getByRole("link", { name: "设置", exact: true }).click();
+  await expect(page.getByRole("button", { name: "抓取当前页面内容" })).toBeVisible();
 });

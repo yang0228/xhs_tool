@@ -14,11 +14,21 @@ test("real extension loads and navigation works at narrow width", async ({
     path: "/tmp/xhs-tool-collection.png",
     fullPage: true,
   });
-  for (const name of ["素材库", "创作", "发布", "采集"])
+  for (const name of ["素材库", "创作", "发布", "采集"]) {
     await page
       .getByRole("navigation")
       .getByRole("link", { name, exact: true })
       .click();
+    if (name === "素材库" || name === "创作") {
+      const tools = await page.locator(".page-tools").boundingBox();
+      const actions = await page.locator(".page-heading-line > .row").boundingBox();
+      expect(actions!.y).toBeGreaterThan(tools!.y + tools!.height);
+      await page.screenshot({
+        path: name === "素材库" ? "/tmp/xhs-tool-materials.png" : "/tmp/xhs-tool-drafts.png",
+        fullPage: true,
+      });
+    }
+  }
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,

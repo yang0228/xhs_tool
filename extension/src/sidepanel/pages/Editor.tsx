@@ -191,11 +191,15 @@ export default function Editor() {
         eyebrow="CREATE / 创作"
         title={id === "new" && !editor.recordId ? "新建草稿" : "编辑草稿"}
       >
-        <Link className="text-button" to="/drafts">
-          全部草稿
+        <Link className={id === "new" ? "btn" : "text-button"} to="/drafts">
+          {id === "new" ? "取消" : "全部草稿"}
         </Link>
       </PageHeading>
-      <p className="muted">把灵感写下来，AI 帮你打磨表达。</p>
+      <p className="muted">
+        {id === "new"
+          ? "输入内容会自动暂存，取消后可再次点击「新建」继续。"
+          : "把灵感写下来，AI 帮你打磨表达。"}
+      </p>
       <ErrorNotice error={error} />
       {error?.includes("冲突") && !editor.recoveryConflict && (
         <button

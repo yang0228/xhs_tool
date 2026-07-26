@@ -78,15 +78,6 @@ export default function Drafts() {
         <Link className="btn btn-primary" to="/drafts/new">
           新建
         </Link>
-        <Link
-          className="btn"
-          to="/drafts/new"
-          state={{
-            seed: { title: "", content: "", image_ids: [], status: "idea" },
-          }}
-        >
-          新建选题
-        </Link>
       </PageHeading>
       <p className="muted">从灵感到成稿，每一次修改都值得保存。</p>
       <div className="tabs">

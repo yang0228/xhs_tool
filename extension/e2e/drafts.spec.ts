@@ -6,6 +6,16 @@ test("creates, reopens, edits, adopts AI and prepares a publication", async ({
   const page = await openSidePanel(context, await getExtensionId(context));
   await page.getByRole("link", { name: "创作", exact: true }).click();
   await page.getByRole("link", { name: "新建", exact: true }).click();
+  await page.getByRole("link", { name: "取消", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "草稿", exact: true })).toBeVisible();
+  await expect(page.locator("article")).toHaveCount(0);
+  await page.getByRole("link", { name: "新建", exact: true }).click();
+  await page.getByLabel("正文", { exact: true }).fill("尚未完成的灵感");
+  await page.getByRole("link", { name: "取消", exact: true }).click();
+  await expect(page.locator("article")).toHaveCount(0);
+  await page.getByRole("link", { name: "新建", exact: true }).click();
+  await expect(page.getByLabel("正文", { exact: true })).toHaveValue("尚未完成的灵感");
+  await page.screenshot({ path: "/tmp/xhs-tool-new-draft.png", fullPage: true });
   await page.getByLabel("标题", { exact: true }).fill("周末的慢生活");
   await page
     .getByLabel("正文", { exact: true })

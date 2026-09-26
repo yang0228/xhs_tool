@@ -3,10 +3,12 @@
 用于个人小红书内容创作的 Chrome 扩展：采集网页与选中文字、整理素材、AI 辅助写作、加密保存草稿、准备发布图文并手动记录数据。
 
 <p align="center">
-  <img src="docs/previews/editor.png" alt="XHS Tool 草稿编辑界面，展示标题、正文、保存状态和准备发布入口" width="390">
+  <a href="docs/previews/editor.png">
+    <img src="docs/previews/editor.png" alt="XHS Tool 草稿编辑界面，展示标题、正文、保存状态和准备发布入口" width="390">
+  </a>
 </p>
 
-编辑标题与正文，查看保存状态，完成草稿后进入发布准备。
+编辑标题与正文，查看保存状态，完成草稿后进入发布准备。点击截图可查看原图。
 
 ## 已实现
 
@@ -20,10 +22,12 @@
 自动发布、Cookie 托管与自动采集指标尚未提供，相关接口明确返回 501。
 
 <p align="center">
-  <img src="docs/previews/collection.png" alt="XHS Tool 素材采集界面，支持抓取当前网页、采集选中文字和手动粘贴" width="390">
+  <a href="docs/previews/collection.png">
+    <img src="docs/previews/collection.png" alt="XHS Tool 素材采集界面，支持抓取当前网页、采集选中文字和手动粘贴" width="390">
+  </a>
 </p>
 
-从当前网页、选中文字或手动粘贴开始，收集创作素材并保留来源。
+从当前网页、选中文字或手动粘贴开始，收集创作素材并保留来源。点击截图可查看原图。
 
 ## 本地启动
 

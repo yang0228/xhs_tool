@@ -57,6 +57,26 @@ XHS Tool 是面向个人小红书内容创作的 Chrome 扩展，将「网页采
 
 从当前网页、选中文字或手动粘贴开始，收集创作素材并保留来源。点击截图可查看原图。
 
+### RAG 引用写作
+
+检索素材并核对来源片段，生成带引用编号的写作建议，再决定是否采用。下图的检索结果与 AI 建议为模拟响应，仅用于展示界面流程。
+
+<p align="center">
+  <a href="docs/previews/rag-writing.png">
+    <img src="docs/previews/rag-writing.png" alt="XHS Tool RAG 引用写作界面，展示检索问题、所选素材片段、引用编号和待采用的正文建议" width="390">
+  </a>
+</p>
+
+### 图文卡片
+
+选择模板与配色，调整分页文字，生成 1080 × 1440 的卡片预览并按页下载 PNG。下图展示使用演示正文实际生成的卡片。点击截图可查看原图。
+
+<p align="center">
+  <a href="docs/previews/card-studio.png">
+    <img src="docs/previews/card-studio.png" alt="XHS Tool 图文卡片工作台，展示步骤模板、暖玫瑰配色、分页编辑、封面预览和 PNG 下载入口" width="390">
+  </a>
+</p>
+
 ## 本地启动
 
 需要 Node.js/npm、Python 3.9+ 和 PostgreSQL 16。图片功能需要 Cloudflare R2；AI 功能需要 Anthropic 兼容接口。

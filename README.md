@@ -23,13 +23,15 @@ XHS Tool 是面向个人小红书内容创作的 Chrome 扩展，将「网页采
 
 项目采用 React + TypeScript 构建扩展界面，FastAPI + Python 提供后端服务。素材与草稿正文在浏览器端加密后保存到 PostgreSQL，图片存储在 Cloudflare R2；AI 写作调用你配置的 Anthropic 兼容接口。可选接入独立的 RAGFlow：启用后，所选素材的明文副本会进入知识库，用于带来源的写作建议。
 
+以下截图来自当前版本，内容均为虚构演示数据。
+
 <p align="center">
   <a href="docs/previews/editor.png">
-    <img src="docs/previews/editor.png" alt="XHS Tool 草稿编辑界面，展示标题、正文、保存状态和准备发布入口" width="390">
+    <img src="docs/previews/editor.png" alt="XHS Tool 草稿编辑界面，展示选题状态、计划日期、主题标签、标题正文和保存发布入口" width="390">
   </a>
 </p>
 
-编辑标题与正文，查看保存状态，完成草稿后进入发布准备。点击截图可查看原图。
+在同一页管理选题、计划日期和主题标签，编辑标题与正文，保存后进入发布准备。点击截图可查看原图。
 
 ## 已实现
 
@@ -49,7 +51,7 @@ XHS Tool 是面向个人小红书内容创作的 Chrome 扩展，将「网页采
 
 <p align="center">
   <a href="docs/previews/collection.png">
-    <img src="docs/previews/collection.png" alt="XHS Tool 素材采集界面，支持抓取当前网页、采集选中文字和手动粘贴" width="390">
+    <img src="docs/previews/collection.png" alt="XHS Tool 素材采集界面，展示精简页头、独立窗口与设置工具，以及网页抓取、选中文字和手动粘贴入口" width="390">
   </a>
 </p>
 
